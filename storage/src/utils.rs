@@ -360,6 +360,16 @@ impl AlignedBuf {
         self.pages.len() * 4096
     }
 
+    /// Return a pointer covering the allocated pages, including bytes beyond the logical length.
+    pub fn as_ptr(&self) -> *const u8 {
+        self.pages.as_ptr().cast::<u8>()
+    }
+
+    /// Return a mutable pointer covering all `capacity()` initialized bytes.
+    pub fn as_mut_ptr(&mut self) -> *mut u8 {
+        self.pages.as_mut_ptr().cast::<u8>()
+    }
+
     pub fn as_slice(&self) -> &[u8] {
         self
     }
@@ -618,6 +628,31 @@ mod tests {
             assert!(buf[..size].iter().all(|byte| *byte == 7));
             assert!(buf[previous..].iter().all(|byte| *byte == 9));
         }
+    }
+
+    #[test]
+    fn aligned_buffer_raw_pointers_cover_capacity() {
+        let mut buf = alloc_buf(4097);
+        let ptr = buf.as_ptr();
+        assert_eq!(ptr as usize % 4096, 0);
+        assert_eq!(buf.len(), 4097);
+        assert_eq!(buf.capacity(), 8192);
+        unsafe {
+            buf.as_mut_ptr().add(5000).write(7);
+            buf.as_mut_ptr().add(8191).write(9);
+        }
+        buf.set_len(8192);
+        assert_eq!(buf[5000], 7);
+        assert_eq!(buf[8191], 9);
+        assert_eq!(buf.as_ptr(), ptr);
+
+        buf.resize(0, 0);
+        assert!(buf.is_empty());
+        unsafe { buf.as_mut_ptr().add(8191).write(11) };
+        buf.set_len(8192);
+        assert_eq!(buf[5000], 7);
+        assert_eq!(buf[8191], 11);
+        assert_eq!(buf.as_ptr(), ptr);
     }
 
     #[test]
