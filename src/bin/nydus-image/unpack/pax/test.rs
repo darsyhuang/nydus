@@ -183,6 +183,10 @@ fn test_read_chunk_zero_buffer() {
 }
 
 #[test]
+#[cfg_attr(
+    miri,
+    ignore = "Miri cannot call the native zlib compression and decompression functions"
+)]
 fn test_read_chunk_compress() {
     let mut reader = create_compress_chunk_reader();
     let mut buf = [0u8; 256];

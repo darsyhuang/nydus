@@ -739,6 +739,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        all(miri, target_os = "linux"),
+        ignore = "Miri does not support the copy_file_range syscall"
+    )]
     fn test_copy_file_range() {
         use std::os::unix::fs::FileExt;
 
@@ -763,6 +767,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not emulate file descriptor path queries")]
     fn test_get_path_from_file() {
         let temp_file = TempFile::new().unwrap();
         let file = temp_file.as_file();

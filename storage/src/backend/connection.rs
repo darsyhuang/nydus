@@ -728,6 +728,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri cannot run reqwest's native TLS/I/O runtime (OpenSSL on Linux)"
+    )]
     fn test_unhealthy_proxy_no_fallback_returns_error() {
         // When proxy is unhealthy and fallback is disabled, call() must return
         // an error immediately without attempting the origin server.
@@ -756,6 +760,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri cannot run reqwest's native TLS/I/O runtime (OpenSSL on Linux)"
+    )]
     fn test_unhealthy_proxy_with_fallback_attempts_origin() {
         // When proxy is unhealthy but fallback IS enabled, call() should
         // fall through to the origin server (which will fail with a connection
@@ -787,6 +795,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri cannot run reqwest's native TLS/I/O runtime (OpenSSL on Linux)"
+    )]
     fn test_healthy_proxy_no_fallback_returns_proxy_error() {
         // When proxy is healthy and fallback is disabled, a failed proxy request
         // should return the proxy error directly without falling back.
@@ -816,6 +828,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri cannot run reqwest's native TLS/I/O runtime (OpenSSL on Linux)"
+    )]
     fn test_disconnected_connection_returns_error() {
         // Verify that a shutdown connection returns Disconnected error
         // regardless of proxy state.
@@ -866,6 +882,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri cannot run reqwest's native TLS/I/O runtime (OpenSSL on Linux)"
+    )]
     fn test_shutdown_stops_proxy_health_checker() {
         let conn = health_check_connection();
         let proxy = Arc::downgrade(conn.proxy.as_ref().unwrap());
@@ -877,6 +897,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri cannot run reqwest's native TLS/I/O runtime (OpenSSL on Linux)"
+    )]
     fn test_drop_stops_proxy_health_checker() {
         let conn = health_check_connection();
         let proxy = Arc::downgrade(conn.proxy.as_ref().unwrap());

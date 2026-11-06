@@ -293,6 +293,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri cannot run reqwest's native TLS/I/O runtime (OpenSSL on Linux)"
+    )]
     fn test_s3_new() {
         let config_str = r#"{
             "endpoint": "https://test.com",

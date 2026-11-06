@@ -208,7 +208,117 @@ mod tests {
     const CONCURRENT: usize = 1000;
     const SEQUENTIAL: usize = 50;
 
+    async fn resolver_with_cached_lookup(
+        domain: &str,
+        cached: CachedLookup,
+    ) -> &'static HickoryDnsResolver {
+        use hickory_resolver::config::{ResolveHosts, ResolverConfig};
+        use hickory_resolver::name_server::TokioConnectionProvider;
+
+        // Exercise our prefilled-cache fast path with the same process-wide lifetime as
+        // HICKORY_DNS_RESOLVER. Dropping Moka hits the known crossbeam-epoch Stacked Borrows
+        // issue: https://github.com/crossbeam-rs/crossbeam/issues/545.
+        static RESOLVER: OnceCell<HickoryDnsResolver> = OnceCell::new();
+        let resolver = RESOLVER.get_or_init(|| {
+            let mut builder = TokioResolver::builder_with_config(
+                ResolverConfig::new(),
+                TokioConnectionProvider::default(),
+            );
+            builder.options_mut().use_hosts_file = ResolveHosts::Never;
+            let resolver = HickoryDnsResolver::default();
+            resolver
+                .state
+                .set(ResolverState {
+                    resolver: builder.build(),
+                    cache: RwLock::new(HashMap::new()),
+                    singleflight: Group::new(),
+                })
+                .unwrap();
+            resolver
+        });
+        resolver
+            .state
+            .get()
+            .unwrap()
+            .cache
+            .write()
+            .await
+            .insert(domain.to_string(), Arc::new(cached));
+        resolver
+    }
+
     #[tokio::test]
+    async fn test_resolve_cached_addresses() {
+        let domain = "cached-addresses.invalid";
+        let addrs = vec![
+            "2001:db8::2".parse::<IpAddr>().unwrap(),
+            "192.0.2.1".parse::<IpAddr>().unwrap(),
+            "2001:db8::1".parse::<IpAddr>().unwrap(),
+        ];
+        let resolver = resolver_with_cached_lookup(
+            domain,
+            CachedLookup {
+                addrs: addrs.clone(),
+                valid_until: Instant::now() + Duration::from_secs(3600),
+                error: None,
+            },
+        )
+        .await;
+
+        let resolved: Vec<_> = resolver
+            .resolve(domain.parse().unwrap())
+            .await
+            .unwrap()
+            .collect();
+        assert_eq!(
+            resolved.iter().map(SocketAddr::ip).collect::<Vec<_>>(),
+            addrs
+        );
+        assert!(resolved.iter().all(|addr| addr.port() == 0));
+        assert_eq!(resolver.lookup_count.load(Ordering::Relaxed), 0);
+    }
+
+    #[tokio::test]
+    async fn test_resolve_cached_error() {
+        let domain = "cached-error.invalid";
+        let resolver = resolver_with_cached_lookup(
+            domain,
+            CachedLookup {
+                addrs: Vec::new(),
+                valid_until: Instant::now() + Duration::from_secs(3600),
+                error: Some("cached DNS failure".to_string()),
+            },
+        )
+        .await;
+
+        let error = match resolver.resolve(domain.parse().unwrap()).await {
+            Ok(_) => panic!("a cached DNS error must be returned"),
+            Err(error) => error,
+        };
+        assert_eq!(error.to_string(), "cached DNS failure");
+        assert_eq!(resolver.lookup_count.load(Ordering::Relaxed), 0);
+    }
+
+    #[tokio::test]
+    async fn test_resolve_cached_empty_addresses() {
+        let domain = "cached-empty.invalid";
+        let resolver = resolver_with_cached_lookup(
+            domain,
+            CachedLookup {
+                addrs: Vec::new(),
+                valid_until: Instant::now() + Duration::from_secs(3600),
+                error: None,
+            },
+        )
+        .await;
+
+        let mut resolved = resolver.resolve(domain.parse().unwrap()).await.unwrap();
+        assert!(resolved.next().is_none());
+        assert_eq!(resolver.lookup_count.load(Ordering::Relaxed), 0);
+    }
+
+    #[tokio::test]
+    #[cfg_attr(miri, ignore = "Miri does not support live DNS queries via sendto")]
     async fn test_resolve_baidu_com() {
         let resolver = HickoryDnsResolver::default();
         let name: Name = "baidu.com".parse().unwrap();
@@ -226,6 +336,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg_attr(miri, ignore = "Miri does not support live DNS queries via sendto")]
     async fn test_concurrent_resolve_singleflight() {
         let resolver = HickoryDnsResolver::default();
 
@@ -262,6 +373,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg_attr(miri, ignore = "Miri does not support live DNS queries via sendto")]
     async fn test_cache_hit_within_ttl() {
         let resolver = HickoryDnsResolver::default();
 
@@ -319,6 +431,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg_attr(miri, ignore = "Miri does not support live DNS queries via sendto")]
     async fn test_error_handling_allows_retry() {
         // Use an invalid domain that should fail.
         let resolver = HickoryDnsResolver::default();
@@ -370,6 +483,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg_attr(miri, ignore = "Miri does not support live DNS queries via sendto")]
     async fn test_negative_cache_sequential_hits() {
         let resolver = HickoryDnsResolver::default();
         let invalid_domain = "sequential-test-nonexistent-domain.invalid";
@@ -419,6 +533,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg_attr(miri, ignore = "Miri does not support live DNS queries via sendto")]
     async fn test_negative_cache_expiry_allows_retry() {
         use std::time::Duration;
 
@@ -465,6 +580,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg_attr(miri, ignore = "Miri does not support live DNS queries via sendto")]
     async fn test_concurrent_error_singleflight() {
         let resolver = HickoryDnsResolver::default();
         let invalid_domain = "another-nonexistent-domain-xyz.invalid";
@@ -510,6 +626,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg_attr(miri, ignore = "Miri does not support live DNS queries via sendto")]
     async fn test_multiple_domains_independent() {
         let resolver = HickoryDnsResolver::default();
 
@@ -565,6 +682,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg_attr(miri, ignore = "Miri does not support live DNS queries via sendto")]
     async fn test_ttl_expiry_triggers_new_lookup() {
         use std::time::Duration;
 
@@ -629,6 +747,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg_attr(miri, ignore = "Miri does not support live DNS queries via sendto")]
     async fn test_concurrent_resolve_after_ttl_expiry() {
         use std::time::Duration;
 

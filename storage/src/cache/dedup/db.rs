@@ -230,6 +230,7 @@ mod tests {
     use tempfile::TempDir;
 
     #[test]
+    #[cfg_attr(miri, ignore = "requires native SQLite FFI")]
     fn test_cas_blob() {
         let tmpdir = TempDir::new().unwrap();
 
@@ -279,6 +280,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "requires native SQLite FFI")]
     fn test_cas_chunk() {
         let tmpdir = TempDir::new().unwrap();
         let mut cas_mgr = CasDb::new(tmpdir.path()).unwrap();

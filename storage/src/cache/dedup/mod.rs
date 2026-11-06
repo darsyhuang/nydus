@@ -250,6 +250,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "requires native SQLite FFI")]
     fn test_cas_mgr_new() {
         let dbfile = TempFile::new().unwrap();
         let mgr = CasMgr::new(dbfile.as_path());
@@ -257,6 +258,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "requires native SQLite FFI")]
     fn test_cas_mgr_singleton() {
         let dbfile = TempFile::new().unwrap();
         let mgr = CasMgr::new(dbfile.as_path()).unwrap();
@@ -308,6 +310,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "requires native SQLite FFI")]
     fn test_record_chunk_raw() {
         let dbfile = TempFile::new().unwrap();
         let mgr = CasMgr::new(dbfile.as_path()).unwrap();
@@ -321,6 +324,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "requires native SQLite FFI")]
     fn test_cas_chunk_op() {
         let dbfile = TempFile::new().unwrap();
         let tmpfile2 = TempFile::new().unwrap();
@@ -356,6 +360,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "requires native SQLite FFI")]
     fn test_cas_dedup_chunk_failed() {
         let dbfile = TempFile::new().unwrap();
         let mgr = CasMgr::new(dbfile.as_path()).unwrap();
@@ -382,6 +387,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "requires native SQLite FFI")]
     fn test_cas_dedup_chunk_with_nonexistent_source() {
         let dbfile = TempFile::new().unwrap();
         let mgr = CasMgr::new(dbfile.as_path()).unwrap();
@@ -412,6 +418,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "requires native SQLite FFI")]
     fn test_record_chunk_with_empty_key() {
         let dbfile = TempFile::new().unwrap();
         let mgr = CasMgr::new(dbfile.as_path()).unwrap();
@@ -436,6 +443,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "requires native SQLite FFI")]
     fn test_cas_gc() {
         let dbfile = TempFile::new().unwrap();
         let mgr = CasMgr::new(dbfile.as_path()).unwrap();
@@ -474,6 +482,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "requires native SQLite FFI")]
     fn test_cas_gc_with_existing_files() {
         let dbfile = TempFile::new().unwrap();
         let mgr = CasMgr::new(dbfile.as_path()).unwrap();

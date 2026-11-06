@@ -34,6 +34,25 @@ pub(crate) struct RafsInspector {
 }
 
 impl RafsInspector {
+    #[cfg(test)]
+    pub(super) fn empty() -> Self {
+        // Argument parsing rejects malformed requests before accessing filesystem metadata.
+        Self {
+            request_mode: true,
+            rafs_meta: RafsSuper::default(),
+            bootstrap: Arc::new(Mutex::new(Box::new(
+                std::fs::File::open(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/tests/texture/bootstrap/rafs-v5.boot"
+                ))
+                .unwrap(),
+            ))),
+            cur_dir_ino: 0,
+            parent_inodes: Vec::new(),
+            file_parents: BTreeMap::new(),
+        }
+    }
+
     // create the RafsInspector
     pub fn new(
         bootstrap_path: &Path,

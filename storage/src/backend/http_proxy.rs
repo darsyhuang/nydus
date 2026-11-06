@@ -461,6 +461,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support AF_UNIX sockets")]
     fn test_head_and_get() {
         thread::spawn(|| {
             let rt = build_tokio_runtime("test-local-http-proxy-server", 1).unwrap();

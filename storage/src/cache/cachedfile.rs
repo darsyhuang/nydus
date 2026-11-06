@@ -2281,21 +2281,13 @@ mod tests {
 
     #[test]
     fn test_entries_count_metric_increment() {
-        use crate::cache::state::{BlobStateMap, IndexedChunkMap};
+        use crate::cache::state::{BlobStateMap, DigestedChunkMap};
+        use nydus_utils::digest::RafsDigest;
         use std::sync::Arc;
-        use tempfile::TempDir;
 
-        // Create temporary directory and metrics
-        let tmpdir = TempDir::new().unwrap();
-        let metrics = BlobcacheMetrics::new("test", tmpdir.path().to_str().unwrap());
-
-        // Create a chunk map for testing
-        let chunk_count = 10;
-        let blob_path = tmpdir.path().join("blob-state");
-        let indexed_map =
-            IndexedChunkMap::new(blob_path.as_os_str().to_str().unwrap(), chunk_count, false)
-                .unwrap();
-        let chunk_map: Arc<dyn ChunkMap> = Arc::new(BlobStateMap::from(indexed_map));
+        let metrics = BlobcacheMetrics::new("test", "");
+        // This test checks metric updates, so an in-memory readiness map is sufficient.
+        let chunk_map: Arc<dyn ChunkMap> = Arc::new(BlobStateMap::from(DigestedChunkMap::new()));
 
         // Verify initial entries_count is 0
         assert_eq!(metrics.entries_count.count(), 0);
@@ -2303,6 +2295,7 @@ mod tests {
         // Create mock chunk info
         let chunk = MockChunkInfo {
             index: 0,
+            block_id: RafsDigest { data: [1; 32] },
             ..Default::default()
         };
 
@@ -2317,6 +2310,7 @@ mod tests {
         // Test another successful update
         let chunk2 = MockChunkInfo {
             index: 1,
+            block_id: RafsDigest { data: [2; 32] },
             ..Default::default()
         };
         FileCacheEntry::_update_chunk_pending_status(&chunk_map, &chunk2, true, &metrics);
@@ -2329,6 +2323,7 @@ mod tests {
         // Test failed update does NOT increment the metric
         let chunk3 = MockChunkInfo {
             index: 2,
+            block_id: RafsDigest { data: [3; 32] },
             ..Default::default()
         };
         FileCacheEntry::_update_chunk_pending_status(&chunk_map, &chunk3, false, &metrics);
@@ -2342,6 +2337,9 @@ mod tests {
         for idx in 3..6 {
             let chunk = MockChunkInfo {
                 index: idx,
+                block_id: RafsDigest {
+                    data: [idx as u8 + 1; 32],
+                },
                 ..Default::default()
             };
             FileCacheEntry::_update_chunk_pending_status(&chunk_map, &chunk, true, &metrics);
@@ -2353,14 +2351,7 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_file_cache_meta_reloads_after_background_load_failed() {
-        use tempfile::TempDir;
-
-        let root_dir = &std::env::var("CARGO_MANIFEST_DIR").expect("$CARGO_MANIFEST_DIR");
-        let fixture = std::path::PathBuf::from(root_dir).join("../tests/texture/zran/233c72f2b6b698c07021c4da367cfe2dff4f049efbaa885ca0ff760ea297865a.blob.meta");
-        let dir = TempDir::new().unwrap();
-        let path = dir.path().join("cached");
+    fn failed_file_cache_meta(path: &std::path::Path) -> FileCacheMeta {
         let mut blob_info = BlobInfo::new(
             0,
             "233c72f2b6b698c07021c4da367cfe2dff4f049efbaa885ca0ff760ea297865a".to_string(),
@@ -2376,7 +2367,7 @@ mod tests {
         blob_info.set_blob_meta_info(0, 0xa1290, 0xa1290, compress::Algorithm::None as u32);
 
         // Simulate the background loader having exhausted its retries.
-        let file_cache_meta = FileCacheMeta {
+        FileCacheMeta {
             has_error: Arc::new(AtomicBool::new(true)),
             meta: Arc::new(Mutex::new(None)),
             loader: Some(Arc::new(FileCacheMetaLoader {
@@ -2386,7 +2377,37 @@ mod tests {
                 validation: false,
                 next_retry: Mutex::new(Instant::now()),
             })),
-        };
+        }
+    }
+
+    #[test]
+    fn test_file_cache_meta_retry_cooldown_after_failure() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let file_cache_meta = failed_file_cache_meta(&dir.path().join("missing"));
+        let before = Instant::now();
+        assert!(file_cache_meta.get_blob_meta().is_none());
+        let after = Instant::now();
+        let deadline = *file_cache_meta
+            .loader
+            .as_ref()
+            .unwrap()
+            .next_retry
+            .lock()
+            .unwrap();
+        assert!(deadline >= before + RELOAD_META_COOLDOWN);
+        assert!(deadline <= after + RELOAD_META_COOLDOWN);
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support file-backed memory mappings")]
+    fn test_file_cache_meta_reloads_after_background_load_failed() {
+        use tempfile::TempDir;
+
+        let root_dir = &std::env::var("CARGO_MANIFEST_DIR").expect("$CARGO_MANIFEST_DIR");
+        let fixture = std::path::PathBuf::from(root_dir).join("../tests/texture/zran/233c72f2b6b698c07021c4da367cfe2dff4f049efbaa885ca0ff760ea297865a.blob.meta");
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("cached");
+        let file_cache_meta = failed_file_cache_meta(&path);
 
         let started = Instant::now();
         assert!(file_cache_meta.get_blob_meta().is_none());

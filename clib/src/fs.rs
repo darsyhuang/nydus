@@ -229,12 +229,48 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri does not support file-backed mmap in direct RAFS mode"
+    )]
     fn test_open_rafs() {
         let fs = open_file_system();
         unsafe { nydus_close_rafs(fs) };
     }
 
     #[test]
+    fn test_open_rafs_invalid_arguments() {
+        let value = CString::new("invalid").unwrap();
+        for (bootstrap, config) in [
+            (null(), null()),
+            (value.as_ptr(), null()),
+            (null(), value.as_ptr()),
+            (value.as_ptr(), value.as_ptr()),
+        ] {
+            assert_eq!(
+                unsafe { nydus_open_rafs(bootstrap, config) },
+                NYDUS_INVALID_FS_HANDLE
+            );
+            assert_eq!(Error::last_os_error().raw_os_error(), Some(libc::EINVAL));
+        }
+        for (bootstrap, dir) in [
+            (null(), null()),
+            (value.as_ptr(), null()),
+            (null(), value.as_ptr()),
+        ] {
+            assert_eq!(
+                unsafe { nydus_open_rafs_default(bootstrap, dir) },
+                NYDUS_INVALID_FS_HANDLE
+            );
+            assert_eq!(Error::last_os_error().raw_os_error(), Some(libc::EINVAL));
+        }
+    }
+
+    #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri does not support file-backed mmap in default RAFS mode"
+    )]
     fn test_open_rafs_default() {
         let root_dir = &std::env::var("CARGO_MANIFEST_DIR").expect("$CARGO_MANIFEST_DIR");
         let bootstrap = PathBuf::from(root_dir)

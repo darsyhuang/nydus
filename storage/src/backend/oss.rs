@@ -209,6 +209,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri cannot run reqwest's native TLS/I/O runtime (OpenSSL on Linux)"
+    )]
     fn test_oss_new() {
         let json_str = "{\"access_key_id\":\"key\",\"access_key_secret\":\"secret\",\"bucket_name\":\"images\",\"endpoint\":\"/oss\",\"object_prefix\":\"nydus\",\"scheme\":\"\",\"proxy\":{\"url\":\"\",\"ping_url\":\"\",\"fallback\":true,\"check_interval\":5},\"timeout\":5,\"connect_timeout\":5,\"retry_limit\":5}";
         let config: OssConfig = serde_json::from_str(json_str).unwrap();
@@ -223,6 +227,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri cannot run reqwest's native TLS/I/O runtime (OpenSSL on Linux)"
+    )]
     fn test_oss_new_no_id() {
         let json_str = "{\"access_key_id\":\"key\",\"access_key_secret\":\"secret\",\"bucket_name\":\"images\",\"endpoint\":\"/oss\",\"object_prefix\":\"\",\"scheme\":\"https\",\"proxy\":{\"url\":\"\",\"ping_url\":\"\",\"fallback\":true,\"check_interval\":5},\"timeout\":5,\"connect_timeout\":5,\"retry_limit\":3}";
         let config: OssConfig = serde_json::from_str(json_str).unwrap();

@@ -454,6 +454,7 @@ pub(crate) mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support file-backed memory mappings")]
     fn test_chunk_map() {
         let dir = TempDir::new().unwrap();
         let blob_path = dir.path().join("blob-1");
@@ -543,6 +544,7 @@ pub(crate) mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support file-backed memory mappings")]
     fn test_chunk_map_perf() {
         let dir = TempDir::new().unwrap();
         let blob_path = dir.path().join("blob-1");
@@ -572,6 +574,7 @@ pub(crate) mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support file-backed memory mappings")]
     fn test_inflight_tracer() {
         let chunk_1: Arc<dyn BlobChunkInfo> = Arc::new({
             let mut c = MockChunkInfo::new();
@@ -629,7 +632,22 @@ pub(crate) mod tests {
             .check_ready_and_mark_pending(chunk_2.as_ref())
             .unwrap(),);
         assert_eq!(index_map.inflight_tracer.lock().unwrap().len(), 0);
+    }
 
+    #[test]
+    fn test_inflight_tracer_digested() {
+        let chunk_1: Arc<dyn BlobChunkInfo> = Arc::new({
+            let mut c = MockChunkInfo::new();
+            c.index = 1;
+            c.block_id = RafsDigest::from_buf("hello world".as_bytes(), Blake3);
+            c
+        });
+        let chunk_2: Arc<dyn BlobChunkInfo> = Arc::new({
+            let mut c = MockChunkInfo::new();
+            c.index = 2;
+            c.block_id = RafsDigest::from_buf("hello world 2".as_bytes(), Blake3);
+            c
+        });
         // digested ChunkMap
         let digest_map = Arc::new(BlobStateMap::from(DigestedChunkMap::new()));
         digest_map
@@ -661,6 +679,7 @@ pub(crate) mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support file-backed memory mappings")]
     fn test_inflight_tracer_race() {
         let tmp_file = TempFile::new().unwrap();
         let map = Arc::new(BlobStateMap::from(
@@ -727,6 +746,7 @@ pub(crate) mod tests {
     ///     The chunk of index 4 is never marked as ready/downloaded.
     ///     Each caller of `has_ready` can escape from where it is blocked.
     ///     After timeout, no slot is left in inflight tracer.
+    #[cfg_attr(miri, ignore = "Miri does not support file-backed memory mappings")]
     fn test_inflight_tracer_timeout() {
         let tmp_file = TempFile::new().unwrap();
         let map = Arc::new(BlobStateMap::from(
@@ -771,6 +791,7 @@ pub(crate) mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support file-backed memory mappings")]
     fn test_inflight_tracer_race_range() {
         let tmp_file = TempFile::new().unwrap();
         let map = Arc::new(BlobStateMap::from(
