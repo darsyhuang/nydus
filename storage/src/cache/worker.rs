@@ -537,38 +537,42 @@ mod tests {
         });
 
         let mgr = Arc::new(AsyncWorkerMgr::new(metrics, config).unwrap());
-        AsyncWorkerMgr::start(mgr.clone()).unwrap();
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            let requests = AsyncWorkerMgr::handle_prefetch_requests(mgr.clone(), &rt);
+            tokio::pin!(requests);
 
-        assert_eq!(mgr.prefetch_delayed.load(Ordering::Acquire), 0);
-        assert_eq!(mgr.prefetch_inflight.load(Ordering::Acquire), 0);
+            assert_eq!(mgr.prefetch_delayed.load(Ordering::Acquire), 0);
+            assert_eq!(mgr.prefetch_inflight.load(Ordering::Acquire), 0);
+            for _ in 0..2 {
+                assert!(mgr
+                    .send_prefetch_message(AsyncPrefetchMessage::RateLimiter(1))
+                    .is_ok());
+            }
+            assert_eq!(mgr.prefetch_inflight.load(Ordering::Acquire), 2);
 
-        thread::sleep(Duration::from_secs(1));
-        assert!(mgr
-            .send_prefetch_message(AsyncPrefetchMessage::RateLimiter(1))
-            .is_ok());
-        assert!(mgr
-            .send_prefetch_message(AsyncPrefetchMessage::RateLimiter(1))
-            .is_ok());
-        thread::sleep(Duration::from_secs(1));
-        assert_eq!(mgr.prefetch_delayed.load(Ordering::Acquire), 0);
-        assert_eq!(mgr.prefetch_inflight.load(Ordering::Acquire), 0);
+            // Poll until the worker waits on the now-empty queue, rather than
+            // assuming a fixed sleep gave another thread time to finish.
+            assert!(futures::poll!(requests.as_mut()).is_pending());
+            assert_eq!(mgr.prefetch_delayed.load(Ordering::Acquire), 0);
+            assert_eq!(mgr.prefetch_inflight.load(Ordering::Acquire), 0);
 
-        assert!(mgr
-            .send_prefetch_message(AsyncPrefetchMessage::RateLimiter(0x1000000))
-            .is_ok());
-        assert!(mgr
-            .send_prefetch_message(AsyncPrefetchMessage::RateLimiter(0x1000000))
-            .is_ok());
-        assert!(mgr
-            .send_prefetch_message(AsyncPrefetchMessage::RateLimiter(u64::MAX))
-            .is_ok());
-        assert!(mgr.prefetch_inflight.load(Ordering::Acquire) <= 3);
-        assert!(mgr.prefetch_inflight.load(Ordering::Acquire) >= 1);
-        thread::sleep(Duration::from_secs(3));
-        assert!(mgr.prefetch_inflight.load(Ordering::Acquire) >= 1);
-        assert!(mgr.prefetch_delayed.load(Ordering::Acquire) >= 1);
+            for size in [0x1000000, 0x1000000, u64::MAX] {
+                assert!(mgr
+                    .send_prefetch_message(AsyncPrefetchMessage::RateLimiter(size))
+                    .is_ok());
+            }
+            assert_eq!(mgr.prefetch_inflight.load(Ordering::Acquire), 3);
 
-        mgr.stop();
-        assert_eq!(mgr.workers.load(Ordering::Acquire), 0);
+            // The final request is capped at twice the bucket maximum, so a
+            // single poll must wait for refill even if the bucket was full.
+            assert!(futures::poll!(requests.as_mut()).is_pending());
+            assert!(mgr.prefetch_inflight.load(Ordering::Acquire) <= 3);
+            assert!(mgr.prefetch_inflight.load(Ordering::Acquire) >= 1);
+            assert!(mgr.prefetch_delayed.load(Ordering::Acquire) >= 1);
+        });
     }
 }
