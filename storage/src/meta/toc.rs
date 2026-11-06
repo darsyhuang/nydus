@@ -440,7 +440,7 @@ impl TocEntryList {
         let size = size as usize;
         let mut buf = alloc_buf(size);
         let sz = reader
-            .read(&mut buf, offset)
+            .read_all(&mut buf, offset)
             .map_err(|e| eother!(format!("failed to read ToC from backend, {}", e)))?;
         if sz != size {
             return Err(eother!(format!(
@@ -742,6 +742,57 @@ mod tests {
     #[cfg(feature = "backend-localfs")]
     use nydus_api::{BackendConfigV2, LocalFsConfig};
     use vmm_sys_util::tempfile::TempFile;
+
+    #[test]
+    fn test_read_toc_header_short_reads() {
+        use crate::backend::BackendResult;
+        use nydus_utils::metrics::BackendMetrics;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        struct ShortReadBlob {
+            data: Vec<u8>,
+            reads: AtomicUsize,
+            metrics: Arc<BackendMetrics>,
+        }
+
+        impl BlobReader for ShortReadBlob {
+            fn blob_size(&self) -> BackendResult<u64> {
+                Ok(self.data.len() as u64)
+            }
+
+            fn try_read(&self, buf: &mut [u8], offset: u64) -> BackendResult<usize> {
+                self.reads.fetch_add(1, Ordering::Relaxed);
+                let start = (offset as usize).min(self.data.len());
+                let count = buf.len().min(37).min(self.data.len() - start);
+                buf[..count].copy_from_slice(&self.data[start..start + count]);
+                Ok(count)
+            }
+
+            fn expect_exact_read(&self) -> bool {
+                false
+            }
+
+            fn metrics(&self) -> &BackendMetrics {
+                &self.metrics
+            }
+        }
+
+        let mut reader = ShortReadBlob {
+            data: (0..519).map(|index| index as u8).collect(),
+            reads: AtomicUsize::new(0),
+            metrics: BackendMetrics::new("toc-short-read", "test"),
+        };
+        let location = TocLocation::with_digest(7, 512, RafsDigest::default());
+        for location in [&location, &TocLocation::default()] {
+            let (buf, end) = TocEntryList::read_toc_header(&reader, location).unwrap();
+            assert_eq!(&buf[..], &reader.data[7..]);
+            assert_eq!(end, 7 + 0x1000);
+            assert!(reader.reads.swap(0, Ordering::Relaxed) > 1);
+        }
+
+        reader.data.pop();
+        assert!(TocEntryList::read_toc_header(&reader, &location).is_err());
+    }
 
     #[test]
     #[cfg(feature = "backend-localfs")]
