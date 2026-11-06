@@ -66,14 +66,14 @@ macro_rules! impl_bootstrap_converter {
             type Error = std::io::Error;
 
             fn try_from(buf: &mut [u8]) -> std::result::Result<Self, Self::Error> {
-                let ptr = buf.as_ptr() as *mut u8 as *const u8;
+                let ptr = buf.as_mut_ptr();
                 if buf.len() != size_of::<$T>()
                     || ptr as usize & (std::mem::align_of::<$T>() - 1) != 0
                 {
                     return Err(einval!("convert failed"));
                 }
 
-                Ok(unsafe { &mut *(ptr as *const $T as *mut $T) })
+                Ok(unsafe { &mut *ptr.cast::<$T>() })
             }
         }
 
@@ -363,6 +363,8 @@ mod tests {
         assert_eq!(v.v, 0x4030201);
         assert_eq!(v.as_mut().len(), 4);
         assert_eq!(v.as_ref(), &[0x1u8, 0x2u8, 0x3u8, 0x4u8]);
+        v.v = 0x0807_0605;
+        assert_eq!(&buf[..4], &[0x5u8, 0x6u8, 0x7u8, 0x8u8]);
     }
 
     #[test]
