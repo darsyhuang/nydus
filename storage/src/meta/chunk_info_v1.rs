@@ -427,6 +427,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "requires native LZ4 compression and decompression")]
     fn test_read_metadata_compressor_lz4() {
         let temp = TempFile::new().unwrap();
         let mut w = OpenOptions::new()

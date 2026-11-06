@@ -897,9 +897,13 @@ mod tests {
         assert_eq!(list.entries.len(), 4);
     }
 
-    #[test]
     #[cfg(feature = "backend-localfs")]
-    fn test_read_from_cache_file() {
+    fn cached_toc_fixture() -> (
+        fs::File,
+        std::path::PathBuf,
+        Arc<dyn crate::backend::BlobReader>,
+        TocEntryList,
+    ) {
         let root_dir = &std::env::var("CARGO_MANIFEST_DIR").expect("$CARGO_MANIFEST_DIR");
         let path = Path::new(root_dir).join("../tests/texture/toc");
         let id = "2fa78cad554b75ac91a4a125ed148d0ddeb25efa4aaa8bd80e5dc292690a4dca";
@@ -931,6 +935,23 @@ mod tests {
         let list = TocEntryList::read_from_cache_file(&path, blob.as_ref(), &location).unwrap();
         assert_eq!(list.entries.len(), 4);
 
+        (file, path, blob, list)
+    }
+
+    #[test]
+    #[cfg(feature = "backend-localfs")]
+    fn test_read_from_cache_file() {
+        let (_file, _path, _blob, _list) = cached_toc_fixture();
+    }
+
+    #[test]
+    #[cfg(feature = "backend-localfs")]
+    #[cfg_attr(
+        miri,
+        ignore = "extracting the cached fixture requires native Zstandard"
+    )]
+    fn test_extract_from_cached_blob() {
+        let (_file, path, blob, list) = cached_toc_fixture();
         list.extract_from_blob(blob.clone(), Some(path.as_path()), None)
             .unwrap();
         assert_eq!(path.metadata().unwrap().len(), 20480);
@@ -972,9 +993,8 @@ mod tests {
         Ok(hasher.digest_finalize().into())
     }
 
-    #[test]
-    fn test_extract_from_buf() {
-        let mut entry = TocEntry {
+    fn extraction_entry() -> TocEntry {
+        TocEntry {
             flags: 0,
             reserved1: 0,
             name: [0u8; 16],
@@ -986,7 +1006,12 @@ mod tests {
             compressed_size: 0,
             uncompressed_size: 0,
             reserved2: [0u8; 48],
-        };
+        }
+    }
+
+    #[test]
+    fn test_extract_from_buf() {
+        let mut entry = extraction_entry();
 
         let buf = [
             79u8, 223, 187, 54, 239, 116, 163, 198, 58, 40, 226, 171, 175, 165, 64, 68, 199, 89,
@@ -1009,6 +1034,15 @@ mod tests {
             String::from("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
         );
 
+        let mut writer = Vec::new();
+        entry.extract_from_buf(&buf, &mut writer).unwrap();
+        assert_eq!(writer, buf);
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore = "requires native Zstandard decompression")]
+    fn test_extract_from_zstd_buf() {
+        let mut entry = extraction_entry();
         let root_dir = &std::env::var("CARGO_MANIFEST_DIR").expect("$CARGO_MANIFEST_DIR");
         let path = Path::new(root_dir)
             .join("../tests/texture/zstd")

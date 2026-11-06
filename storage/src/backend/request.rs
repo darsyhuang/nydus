@@ -443,6 +443,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri cannot run reqwest's native TLS/I/O runtime (OpenSSL on Linux)"
+    )]
     fn test_request_new() {
         let req = make_request("", "");
         assert!(req.is_proxy_mode());
@@ -450,30 +454,50 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri cannot run reqwest's native TLS/I/O runtime (OpenSSL on Linux)"
+    )]
     fn test_is_proxy_mode_no_scheduler() {
         let req = make_request("http://proxy:8080", "");
         assert!(req.is_proxy_mode());
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri cannot run reqwest's native TLS/I/O runtime (OpenSSL on Linux)"
+    )]
     fn test_is_proxy_mode_with_scheduler() {
         let req = make_request("http://proxy:8080", "http://scheduler:8002");
         assert!(!req.is_proxy_mode());
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri cannot run reqwest's native TLS/I/O runtime (OpenSSL on Linux)"
+    )]
     fn test_dragonfly_scheduler_endpoint() {
         let req = make_request("", "http://scheduler:8002");
         assert_eq!(req.dragonfly_scheduler_endpoint(), "http://scheduler:8002");
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri cannot run reqwest's native TLS/I/O runtime (OpenSSL on Linux)"
+    )]
     fn test_dragonfly_scheduler_endpoint_empty() {
         let req = make_request("", "");
         assert_eq!(req.dragonfly_scheduler_endpoint(), "");
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri cannot run reqwest's native TLS/I/O runtime (OpenSSL on Linux)"
+    )]
     fn test_shutdown_and_is_shutdown() {
         let req = make_request("", "");
         assert!(!req.is_shutdown());
@@ -482,6 +506,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri cannot run reqwest's native TLS/I/O runtime (OpenSSL on Linux)"
+    )]
     fn test_call_direct_no_proxy() {
         let req = make_request("", "");
         let mut headers = HeaderMap::new();
@@ -503,6 +531,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri cannot run reqwest's native TLS/I/O runtime (OpenSSL on Linux)"
+    )]
     fn test_call_temp_disable_proxy_bypasses_proxy() {
         let req = make_request("http://proxy:8080", "http://scheduler:8002");
         let mut headers = HeaderMap::new();
@@ -524,6 +556,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri cannot run reqwest's native TLS/I/O runtime (OpenSSL on Linux)"
+    )]
     fn test_call_context_disable_proxy_bypasses_proxy() {
         let req = make_request("http://proxy:8080", "http://scheduler:8002");
         let mut headers = HeaderMap::new();
@@ -547,6 +583,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri cannot run reqwest's native TLS/I/O runtime (OpenSSL on Linux)"
+    )]
     fn test_call_injects_custom_headers() {
         std::env::set_var("NYDUS_HEADER_X-TEST-INJECT", "injected");
         let req = make_request("", "");
@@ -573,6 +613,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri cannot run reqwest's native TLS/I/O runtime (OpenSSL on Linux)"
+    )]
     fn test_call_empty_proxy_url_goes_direct() {
         // Even with scheduler configured, empty proxy URL → direct
         let req = make_request("", "http://scheduler:8002");
@@ -689,6 +733,10 @@ mod tests {
 
     #[cfg(feature = "backend-dragonfly-proxy")]
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri cannot run reqwest's native TLS/I/O runtime (OpenSSL on Linux)"
+    )]
     fn test_call_sdk_proxy_rejects_post() {
         let req = make_request("http://proxy:8080", "http://scheduler:8002");
         let mut headers = HeaderMap::new();
@@ -722,6 +770,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri cannot run reqwest's native TLS/I/O runtime (OpenSSL on Linux)"
+    )]
     fn test_dragonfly_scheduler_endpoint_hot_reload() {
         // Verify dragonfly_scheduler_endpoint() picks up dynamic config changes
         let req = make_request("http://proxy:8080", "http://scheduler:8002");
@@ -746,6 +798,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri cannot run reqwest's native TLS/I/O runtime (OpenSSL on Linux)"
+    )]
     fn test_dragonfly_scheduler_endpoint_hot_reload_empty_to_set() {
         // Start with no scheduler → proxy mode; then set endpoint → SDK mode
         let req = make_request("http://proxy:8080", "");
@@ -767,6 +823,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri cannot run reqwest's native TLS/I/O runtime (OpenSSL on Linux)"
+    )]
     fn test_request_new_registers_config_via_set_if_empty() {
         // Verify that Request::new() registers initial config values
         let req = make_request("http://proxy:3128", "http://sched:8002");
@@ -865,6 +925,10 @@ mod tests {
 
     #[cfg(feature = "backend-dragonfly-proxy")]
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri cannot run reqwest's native TLS/I/O runtime (OpenSSL on Linux)"
+    )]
     fn test_error_header_429_detected_as_too_many_requests() {
         let (addr, shutdown) = start_mock_dragonfly_server(429, true);
         let url = format!("http://{}/test", addr);
@@ -952,6 +1016,10 @@ mod tests {
 
     #[cfg(feature = "backend-dragonfly-proxy")]
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri cannot run reqwest's native TLS/I/O runtime (OpenSSL on Linux)"
+    )]
     fn test_error_header_403_detected_as_forbidden() {
         let (addr, shutdown) = start_mock_dragonfly_server(403, true);
 
@@ -1009,6 +1077,10 @@ mod tests {
 
     #[cfg(feature = "backend-dragonfly-proxy")]
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri cannot run reqwest's native TLS/I/O runtime (OpenSSL on Linux)"
+    )]
     fn test_no_error_header_200_passes_through() {
         // A 200 response without X-Dragonfly-Error-Type should pass through as Ok
         let (addr, shutdown) = start_mock_dragonfly_server(200, false);
@@ -1062,6 +1134,10 @@ mod tests {
 
     #[cfg(feature = "backend-dragonfly-proxy")]
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri cannot run reqwest's native TLS/I/O runtime (OpenSSL on Linux)"
+    )]
     fn test_call_http_proxy_injects_dragonfly_headers() {
         // HTTP proxy mode (proxy URL set, no scheduler) should inject
         // X-Dragonfly-Priority, X-Dragonfly-Use-P2P, X-Dragonfly-Prefetch
@@ -1099,6 +1175,10 @@ mod tests {
 
     #[cfg(feature = "backend-dragonfly-proxy")]
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri cannot run reqwest's native TLS/I/O runtime (OpenSSL on Linux)"
+    )]
     fn test_call_http_proxy_priority_ondemand() {
         // OnDemand requests should get priority 6
         let req = make_request("http://proxy:8080", "");
@@ -1127,6 +1207,10 @@ mod tests {
 
     #[cfg(feature = "backend-dragonfly-proxy")]
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri cannot run reqwest's native TLS/I/O runtime (OpenSSL on Linux)"
+    )]
     fn test_call_http_proxy_priority_prefetch() {
         // Prefetch requests should get priority 3
         let req = make_request("http://proxy:8080", "");
@@ -1155,6 +1239,10 @@ mod tests {
 
     #[cfg(feature = "backend-dragonfly-proxy")]
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri cannot run reqwest's native TLS/I/O runtime (OpenSSL on Linux)"
+    )]
     fn test_call_sdk_disabled_still_injects_dragonfly_headers() {
         // When SDK is configured but disabled (fallback to HTTP proxy),
         // dragonfly headers should still be injected.
@@ -1186,6 +1274,10 @@ mod tests {
 
     #[cfg(feature = "backend-dragonfly-proxy")]
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri cannot run reqwest's native TLS/I/O runtime (OpenSSL on Linux)"
+    )]
     fn test_call_no_dragonfly_headers_when_direct() {
         // Direct mode (no proxy URL) should NOT inject dragonfly headers
         let req = make_request("", "");
@@ -1212,6 +1304,10 @@ mod tests {
 
     #[cfg(feature = "backend-dragonfly-proxy")]
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri cannot run reqwest's native TLS/I/O runtime (OpenSSL on Linux)"
+    )]
     fn test_call_sdk_proxy_skipped_when_disabled() {
         let req = make_request("http://proxy:8080", "http://scheduler:8002");
         let mut headers = HeaderMap::new();

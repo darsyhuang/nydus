@@ -419,7 +419,17 @@ mod tests {
             unsafe { FileVolatileSlice::from_raw_ptr(buf3.as_mut_ptr(), buf3.len()) },
         ];
 
-        assert_eq!(blob2.readv(&bufs, 0x1, 2).unwrap(), 2);
+        // Each slice holds one byte, so resume at the next slice after a short read.
+        let mut bytes_read = 0;
+        while bytes_read < bufs.len() {
+            let remaining = bufs.len() - bytes_read;
+            let count = blob2
+                .readv(&bufs[bytes_read..], 0x1 + bytes_read as u64, remaining)
+                .unwrap();
+            assert!(count > 0 && count <= remaining);
+            bytes_read += count;
+        }
+        assert_eq!(bytes_read, 2);
         assert_eq!(buf2[0], 0x2);
         assert_eq!(buf3[0], 0x3);
 

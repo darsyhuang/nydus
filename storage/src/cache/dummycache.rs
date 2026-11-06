@@ -372,6 +372,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support file-backed memory mappings")]
     fn test_dummy_cache() {
         let info = BlobInfo::new(
             0,

@@ -410,6 +410,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support file-backed memory mappings")]
     fn test_fs_cache_mgr() {
         let content = r#"version=2
         id = "my_id"

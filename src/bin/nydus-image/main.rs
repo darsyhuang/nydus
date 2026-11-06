@@ -2337,10 +2337,7 @@ impl Command {
 
 #[cfg(test)]
 mod tests {
-    use std::{path::PathBuf, sync::Arc};
-
     use super::Command;
-    use nydus_api::ConfigV2;
 
     #[test]
     fn test_ensure_file() {
@@ -2349,11 +2346,7 @@ mod tests {
 
     #[test]
     fn test_execute_inspect_request_rejects_invalid_chunk_offset() {
-        let bootstrap =
-            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/texture/bootstrap/rafs-v5.boot");
-        let mut inspector =
-            super::inspect::RafsInspector::new(&bootstrap, true, Arc::new(ConfigV2::default()))
-                .unwrap();
+        let mut inspector = super::inspect::RafsInspector::empty();
 
         let err = Command::execute_inspect_request(&mut inspector, "chunk abc").unwrap_err();
         assert!(err.to_string().contains("invalid arguments"));
@@ -2361,11 +2354,7 @@ mod tests {
 
     #[test]
     fn test_execute_inspect_request_rejects_invalid_inode() {
-        let bootstrap =
-            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/texture/bootstrap/rafs-v5.boot");
-        let mut inspector =
-            super::inspect::RafsInspector::new(&bootstrap, true, Arc::new(ConfigV2::default()))
-                .unwrap();
+        let mut inspector = super::inspect::RafsInspector::empty();
 
         let err = Command::execute_inspect_request(&mut inspector, "icheck abc").unwrap_err();
         assert!(err.to_string().contains("invalid arguments"));

@@ -558,6 +558,10 @@ mod tests {
     // ── ObjectStorage construction and lifecycle ───────────────────────────
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri cannot run reqwest's native TLS/I/O runtime (OpenSSL on Linux)"
+    )]
     fn test_new_object_storage_metrics_and_shutdown() {
         let metrics = BackendMetrics::new("obj-storage-lifecycle", "oss");
         let storage = ObjectStorage::new_object_storage(
@@ -580,6 +584,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri cannot run reqwest's native TLS/I/O runtime (OpenSSL on Linux)"
+    )]
     fn test_get_reader_with_metrics_returns_ok() {
         let metrics = BackendMetrics::new("obj-storage-get-reader-ok", "oss");
         let storage = ObjectStorage::new_object_storage(
@@ -594,6 +602,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri cannot run reqwest's native TLS/I/O runtime (OpenSSL on Linux)"
+    )]
     fn test_get_reader_without_metrics_returns_error() {
         let storage: ObjectStorage<MockState> = ObjectStorage::new_object_storage(
             make_request(),
@@ -609,6 +621,10 @@ mod tests {
     // ── ObjectStorageReader behaviour ─────────────────────────────────────
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri cannot run reqwest's native TLS/I/O runtime (OpenSSL on Linux)"
+    )]
     fn test_reader_retry_limit() {
         let metrics = BackendMetrics::new("obj-storage-retry-limit", "oss");
         let storage = ObjectStorage::new_object_storage(
@@ -623,6 +639,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri cannot run reqwest's native TLS/I/O runtime (OpenSSL on Linux)"
+    )]
     fn test_reader_metrics_same_as_storage() {
         let metrics = BackendMetrics::new("obj-storage-reader-metrics", "oss");
         let storage = ObjectStorage::new_object_storage(
@@ -638,6 +658,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri cannot run reqwest's native TLS/I/O runtime (OpenSSL on Linux)"
+    )]
     fn test_reader_blob_size_uses_head_request() {
         let (base_url, shutdown, _seen_ranges) = start_object_storage_server(true);
         let state = Arc::new(MockState::with_base_url(4, base_url));
@@ -654,6 +678,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri cannot run reqwest's native TLS/I/O runtime (OpenSSL on Linux)"
+    )]
     fn test_reader_blob_size_requires_content_length() {
         let (base_url, shutdown, _seen_ranges) = start_object_storage_server(false);
         let metrics = BackendMetrics::new("obj-storage-missing-length", "oss");
@@ -676,6 +704,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri cannot run reqwest's native TLS/I/O runtime (OpenSSL on Linux)"
+    )]
     fn test_reader_try_read_ctx_reads_requested_range() {
         let (base_url, shutdown, seen_ranges) = start_object_storage_server(true);
         let state = Arc::new(MockState::with_base_url(3, base_url));
@@ -696,6 +728,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri cannot run reqwest's native TLS/I/O runtime (OpenSSL on Linux)"
+    )]
     fn test_reader_propagates_sign_errors() {
         let metrics = BackendMetrics::new("obj-storage-sign-error", "oss");
         let storage = ObjectStorage::new_object_storage(
@@ -716,6 +752,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri cannot run reqwest's native TLS/I/O runtime (OpenSSL on Linux)"
+    )]
     fn test_stream_read_offset_zero_no_range_header() {
         let (base_url, shutdown, seen_ranges) = start_object_storage_server(true);
         let state = Arc::new(MockState::with_base_url(3, base_url));
@@ -735,6 +775,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri cannot run reqwest's native TLS/I/O runtime (OpenSSL on Linux)"
+    )]
     fn test_stream_read_offset_nonzero_open_range() {
         let (base_url, shutdown, seen_ranges) = start_object_storage_server(true);
         let state = Arc::new(MockState::with_base_url(3, base_url));

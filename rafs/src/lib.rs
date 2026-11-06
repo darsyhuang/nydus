@@ -321,6 +321,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support file-backed bootstrap mappings")]
     fn test_rafs_iterator() {
         let root_dir = &std::env::var("CARGO_MANIFEST_DIR").expect("$CARGO_MANIFEST_DIR");
         let path = PathBuf::from(root_dir).join("../tests/texture/bootstrap/rafs-v5.boot");
@@ -355,5 +356,91 @@ mod tests {
             }
         }
         assert!(last);
+    }
+
+    #[test]
+    fn test_rafs_iterator_cached() {
+        let root_dir = &std::env::var("CARGO_MANIFEST_DIR").expect("$CARGO_MANIFEST_DIR");
+        let path = PathBuf::from(root_dir)
+            .join("../tests/texture/repeatable/sha256-nocompress-repeatable");
+        let bootstrap = OpenOptions::new().read(true).open(path).unwrap();
+        let mut rs = RafsSuper {
+            mode: RafsMode::Cached,
+            validate_digest: false,
+            ..Default::default()
+        };
+        rs.load(&mut (Box::new(bootstrap) as RafsIoReader)).unwrap();
+        let paths: Vec<_> = RafsIterator::new(&rs).map(|(_, path)| path).collect();
+        let busybox = "/normal-file-test/busybox/1f777dbdd68d1c4d554bc0d20e027bfef9ed2dfe2d8d5f029e958552a0e12475";
+        let mut expected = [
+            "/",
+            "/hardlink-test",
+            "/hardlink-test/foo",
+            "/hardlink-test/test.sh",
+            "/normal-file-test",
+            "/normal-file-test/busybox",
+            busybox,
+        ]
+        .map(PathBuf::from)
+        .to_vec();
+        expected.extend(
+            [
+                "VERSION",
+                "bin",
+                "dev",
+                "etc",
+                "etc/group",
+                "etc/localtime",
+                "etc/network",
+                "etc/network/if-down.d",
+                "etc/network/if-post-down.d",
+                "etc/network/if-pre-up.d",
+                "etc/network/if-up.d",
+                "etc/passwd",
+                "etc/shadow",
+                "home",
+                "json",
+                "layer.tar",
+                "root",
+                "tmp",
+                "usr",
+                "usr/sbin",
+                "var",
+                "var/spool",
+                "var/spool/mail",
+                "var/www",
+            ]
+            .map(|path| Path::new(busybox).join(path)),
+        );
+        expected.extend(
+            [
+                "/normal-file-test/busybox/af2f74c517aac1d26793a6ed05ff45b299a037e1a9eefeae5eacda133e70a825.json",
+                "/normal-file-test/busybox/manifest.json",
+                "/normal-file-test/busybox/repositories",
+                "/normal-file-test/holefiles",
+                "/normal-file-test/holefiles/chsum",
+                "/normal-file-test/holefiles/head-hole-1",
+                "/normal-file-test/holefiles/head-hole-2",
+                "/normal-file-test/holefiles/head-hole-3",
+                "/normal-file-test/holefiles/mid-non-hole-1024",
+                "/normal-file-test/holefiles/mid-non-hole-4096",
+                "/normal-file-test/holefiles/mid-non-hole-5000",
+                "/normal-file-test/holefiles/tail-hole-1024",
+                "/normal-file-test/holefiles/tail-hole-4096",
+                "/normal-file-test/holefiles/tail-hole-5000",
+                "/normal-file-test/test.sh",
+                "/symlink-test",
+                "/symlink-test/bar",
+                "/symlink-test/foo",
+                "/symlink-test/foo1",
+                "/symlink-test/root",
+                "/symlink-test/root-1",
+                "/symlink-test/root-2",
+                "/symlink-test/test.sh",
+            ]
+            .map(PathBuf::from),
+        );
+        assert_eq!(paths.len(), 54);
+        assert_eq!(paths, expected);
     }
 }
