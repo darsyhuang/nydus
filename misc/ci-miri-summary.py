@@ -12,6 +12,8 @@ MAX_CONTEXT_LINES = 24
 ANSI = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\))")
 CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 MIRI_ERROR = re.compile(r"^error: (Undefined Behavior|unsupported operation)\b", re.I)
+MIRI_THREADS = re.compile(r"^error: the main thread terminated without waiting for all remaining threads\b")
+MIRI_LEAK = re.compile(r"^error: memory leaked\b")
 PANIC = re.compile(r"^(?:thread\b.*\bpanicked at\b|panicked at\b)")
 ASSERTION = re.compile(r"^assertion\b.*\bfailed\b")
 TEST_RESULT = re.compile(r"^\s*(?:FAIL|ABORT|TIMEOUT)\s+\[.*?\]\s+(?:\(\s*\d+\s*/\s*\d+\s*\)\s+)?(.+)")
@@ -39,6 +41,10 @@ def reports(log):
         error = MIRI_ERROR.match(stripped)
         if error:
             kind = error.group(1).lower()
+        elif MIRI_THREADS.match(stripped):
+            kind = "unfinished threads"
+        elif MIRI_LEAK.match(stripped):
+            kind = "memory leak"
         elif PANIC.match(stripped):
             kind = "panic"
         elif ASSERTION.match(stripped):
