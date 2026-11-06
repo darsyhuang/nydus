@@ -371,7 +371,7 @@ mod tests {
     use super::*;
     use mio::{Poll, Token};
     use procfs::sys::kernel::Version;
-    use vmm_sys_util::tempdir::TempDir;
+    use tempfile::TempDir;
 
     fn create_service_controller() -> ServiceController {
         let bti = BuildTimeInfo {
@@ -404,7 +404,7 @@ mod tests {
     }
 
     #[test]
-    fn test_initialize_fscache_service() {
+    fn test_initialize_fscache_service_invalid_path() {
         let service_controller = create_service_controller();
 
         assert!(service_controller
@@ -416,6 +416,15 @@ mod tests {
         assert!(service_controller
             .initialize_fscache_service(None, 1, p.to_str().unwrap(), None)
             .is_err());
+    }
+
+    #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri does not support cachefiles file readiness monitoring"
+    )]
+    fn test_initialize_fscache_service() {
+        let service_controller = create_service_controller();
 
         // skip test if user is not root
         if !nix::unistd::Uid::effective().is_root() {
@@ -436,7 +445,7 @@ mod tests {
         }
 
         let tmp_dir = TempDir::new().unwrap();
-        let dir = tmp_dir.as_path().to_str().unwrap();
+        let dir = tmp_dir.path().to_str().unwrap();
         assert!(service_controller
             .initialize_fscache_service(None, 1, dir, None)
             .is_ok());
@@ -481,7 +490,7 @@ mod tests {
     }
 
     #[test]
-    fn test_initialize_blob_cache() {
+    fn test_initialize_blob_cache_without_entries() {
         let service_controller = create_service_controller();
         let blob_cache_mgr = service_controller.get_blob_cache_mgr().unwrap();
         let content = create_factory_config();
@@ -505,14 +514,22 @@ mod tests {
             .initialize_blob_cache(&Some(config))
             .is_ok());
         assert!(blob_cache_mgr.get_config(&key).is_none());
+    }
 
-        //test fourth if
+    #[test]
+    #[cfg_attr(miri, ignore = "requires file-backed bootstrap mappings and readahead")]
+    fn test_initialize_blob_cache() {
+        let service_controller = create_service_controller();
+        let blob_cache_mgr = service_controller.get_blob_cache_mgr().unwrap();
+        let content = create_factory_config();
+        let key = generate_blob_key("domain2", "rafs-v6");
+
         let tmp_dir = TempDir::new().unwrap();
         let root_dir = &std::env::var("CARGO_MANIFEST_DIR").expect("$CARGO_MANIFEST_DIR");
         let mut source_path = std::path::PathBuf::from(root_dir);
         source_path.push("../tests/texture/bootstrap/rafs-v6-2.2.boot");
         let cfg = content
-            .replace("/tmp/nydus", tmp_dir.as_path().to_str().unwrap())
+            .replace("/tmp/nydus", tmp_dir.path().to_str().unwrap())
             .replace("RAFS_V5", &source_path.display().to_string());
         let config: serde_json::Value = serde_json::from_str(&cfg).unwrap();
         assert!(service_controller

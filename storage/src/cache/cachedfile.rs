@@ -2283,15 +2283,15 @@ mod tests {
     fn test_entries_count_metric_increment() {
         use crate::cache::state::{BlobStateMap, IndexedChunkMap};
         use std::sync::Arc;
-        use vmm_sys_util::tempdir::TempDir;
+        use tempfile::TempDir;
 
         // Create temporary directory and metrics
         let tmpdir = TempDir::new().unwrap();
-        let metrics = BlobcacheMetrics::new("test", tmpdir.as_path().to_str().unwrap());
+        let metrics = BlobcacheMetrics::new("test", tmpdir.path().to_str().unwrap());
 
         // Create a chunk map for testing
         let chunk_count = 10;
-        let blob_path = tmpdir.as_path().join("blob-state");
+        let blob_path = tmpdir.path().join("blob-state");
         let indexed_map =
             IndexedChunkMap::new(blob_path.as_os_str().to_str().unwrap(), chunk_count, false)
                 .unwrap();
@@ -2355,12 +2355,12 @@ mod tests {
 
     #[test]
     fn test_file_cache_meta_reloads_after_background_load_failed() {
-        use vmm_sys_util::tempdir::TempDir;
+        use tempfile::TempDir;
 
         let root_dir = &std::env::var("CARGO_MANIFEST_DIR").expect("$CARGO_MANIFEST_DIR");
         let fixture = std::path::PathBuf::from(root_dir).join("../tests/texture/zran/233c72f2b6b698c07021c4da367cfe2dff4f049efbaa885ca0ff760ea297865a.blob.meta");
         let dir = TempDir::new().unwrap();
-        let path = dir.as_path().join("cached");
+        let path = dir.path().join("cached");
         let mut blob_info = BlobInfo::new(
             0,
             "233c72f2b6b698c07021c4da367cfe2dff4f049efbaa885ca0ff760ea297865a".to_string(),

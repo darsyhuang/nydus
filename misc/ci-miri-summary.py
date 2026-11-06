@@ -14,7 +14,8 @@ CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 MIRI_ERROR = re.compile(r"^error: (Undefined Behavior|unsupported operation)\b", re.I)
 PANIC = re.compile(r"^(?:thread\b.*\bpanicked at\b|panicked at\b)")
 ASSERTION = re.compile(r"^assertion\b.*\bfailed\b")
-TEST_RESULT = re.compile(r"^\s*(?:FAIL|ABORT|TIMEOUT)\s+\[.*?\]\s+(?:\(\d+/\d+\)\s+)?(.+)")
+TEST_RESULT = re.compile(r"^\s*(?:FAIL|ABORT|TIMEOUT)\s+\[.*?\]\s+(?:\(\s*\d+\s*/\s*\d+\s*\)\s+)?(.+)")
+LIBTEST_PREFIX = re.compile(r"^\s*test[ \t]+(\S+)[ \t]+\.\.\.[ \t]+")
 SOURCE = re.compile(r"(?:-->\s*|\bpanicked at\s+)([^\r\n]*?:\d+(?::\d+)?)")
 
 
@@ -24,11 +25,15 @@ def reports(log):
     for raw in log:
         line = CONTROL.sub("", ANSI.sub("", raw))
         result = TEST_RESULT.match(line)
-        if result:
+        libtest = LIBTEST_PREFIX.match(line)
+        if result or libtest:
             if current:
                 yield current
                 current = None
-            test = result.group(1).strip()
+            test = (result or libtest).group(1).strip()
+            if libtest:
+                # Libtest may print the first diagnostic immediately after its test label.
+                line = line[libtest.end():]
 
         stripped = line.lstrip()
         error = MIRI_ERROR.match(stripped)
@@ -61,7 +66,7 @@ def report_key(report):
     body = "".join(report["lines"])
     location = SOURCE.search(body)
     # Thread names and Miri allocation/tag IDs vary between tests and runs.
-    reason = re.sub(r"^thread\s+['\"].*?['\"]", "thread '<thread>'", report["lines"][0].strip())
+    reason = re.sub(r"^thread\s+['\"].*?['\"](?:\s+\(\d+\))?", "thread '<thread>'", report["lines"][0].strip())
     if report["kind"] == "panic":
         # The panic header may contain only a location; include its actual reason.
         reason += " " + next((line.strip() for line in report["lines"][1:] if line.strip()), "")

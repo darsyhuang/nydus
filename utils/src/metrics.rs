@@ -967,18 +967,20 @@ mod tests {
         f.measure_latency.store(true, Ordering::Relaxed);
         let s = f.latency_start().unwrap();
         let d = Duration::new(1, 500_000_000);
-        /* because of the timer resolution, the elapsed maybe greater than 1.5s gentlely*/
-        f.latency_end(&s.checked_sub(d), StatsFop::Read);
-        assert_eq!(
-            f.read_latency_dist[latency_micros_range_index(1_500_000)].count(),
-            1
-        );
-        /* we think if the latency delta error no more 1ms, the test is successful. */
-        assert!(
-            f.fop_cumulative_latency_total[StatsFop::Read as usize].count()
-                - saturating_duration_micros(&d)
-                <= 1000
-        );
+        let start = s.checked_sub(d).unwrap();
+        let before = SystemTime::now();
+        f.latency_end(&Some(start), StatsFop::Read);
+        let after = SystemTime::now();
+
+        // Scheduling delays may cross a latency bucket boundary, including under Miri.
+        let elapsed = f.fop_cumulative_latency_total[StatsFop::Read as usize].count();
+        let minimum = before.duration_since(start).unwrap().as_micros();
+        let maximum = after.duration_since(start).unwrap().as_micros();
+        assert!((minimum..=maximum).contains(&u128::from(elapsed)));
+        let expected_bucket = latency_micros_range_index(elapsed);
+        for (index, bucket) in f.read_latency_dist.iter().enumerate() {
+            assert_eq!(bucket.count(), u64::from(index == expected_bucket));
+        }
     }
 
     #[test]
@@ -1055,14 +1057,29 @@ mod tests {
 
         let now = SystemTime::now();
         let prev = now.checked_sub(Duration::new(10, 0)).unwrap();
+        let before = SystemTime::now();
         m1.calculate_prefetch_metrics(prev);
-        assert_eq!(m1.prefetch_cumulative_time_millis.count(), 10_000);
-        assert_eq!(
-            m1.prefetch_end_time_secs.count(),
-            now.duration_since(SystemTime::UNIX_EPOCH)
-                .expect("No error")
-                .as_secs()
+        let after = SystemTime::now();
+
+        let minimum = before.duration_since(prev).unwrap().as_millis();
+        let maximum = after.duration_since(prev).unwrap().as_millis();
+        assert!(
+            (minimum..=maximum).contains(&u128::from(m1.prefetch_cumulative_time_millis.count()))
         );
+
+        // Recombine the timestamp fields so crossing a second remains valid.
+        let millis = m1.prefetch_end_time_millis.count();
+        assert!(millis < 1000);
+        let end = u128::from(m1.prefetch_end_time_secs.count()) * 1000 + u128::from(millis);
+        let minimum = before
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_millis();
+        let maximum = after
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_millis();
+        assert!((minimum..=maximum).contains(&end));
 
         let id0: Option<String> = Some("id-0".to_string());
         let none: Option<String> = None;

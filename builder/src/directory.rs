@@ -273,7 +273,7 @@ mod tests {
     use std::path::Path;
 
     use nydus_rafs::metadata::RafsVersion;
-    use vmm_sys_util::tempdir::TempDir;
+    use tempfile::TempDir;
 
     use super::*;
     use crate::{Bootstrap, BootstrapContext};
@@ -284,22 +284,26 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri does not support native extended attribute operations"
+    )]
     fn test_v5_hardlinked_symlink_is_not_coalesced() {
         let source = TempDir::new().unwrap();
-        let nested = source.as_path().join("b");
+        let nested = source.path().join("b");
         fs::create_dir(&nested).unwrap();
 
-        let symlink_path = source.as_path().join("a");
+        let symlink_path = source.path().join("a");
         symlink("target", &symlink_path).unwrap();
         fs::hard_link(&symlink_path, nested.join("a")).unwrap();
 
-        let regular_path = source.as_path().join("c");
+        let regular_path = source.path().join("c");
         fs::write(&regular_path, b"data").unwrap();
         fs::hard_link(&regular_path, nested.join("c")).unwrap();
 
         let mut ctx = BuildContext {
             fs_version: RafsVersion::V5,
-            source_path: source.as_path().to_path_buf(),
+            source_path: source.path().to_path_buf(),
             ..Default::default()
         };
         let (tree, _) = DirectoryBuilder::new().build_tree(&mut ctx, 0).unwrap();

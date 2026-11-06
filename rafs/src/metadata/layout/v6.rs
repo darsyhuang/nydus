@@ -2685,6 +2685,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot execute OpenSSL native functions")]
     fn test_rafs_v6_blob() {
         let mut blob = RafsV6Blob {
             cipher_algo: crypt::Algorithm::Aes256Gcm as u32,
@@ -2708,7 +2709,29 @@ mod tests {
     }
 
     #[test]
+    fn test_rafs_v6_blob_without_encryption() {
+        let mut blob = RafsV6Blob {
+            blob_id: [0x1u8; BLOB_SHA256_LEN],
+            blob_meta_digest: [0xcu8; 32],
+            ..Default::default()
+        };
+        blob.blob_meta_digest[31] = 0xau8;
+        let info = blob.to_blob_info().unwrap();
+        assert!(RafsV6Blob::from_blob_info(&info).is_ok());
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot execute OpenSSL native functions")]
     fn test_rafs_v6_blob_table() {
+        check_rafs_v6_blob_table(crypt::Algorithm::Aes128Xts);
+    }
+
+    #[test]
+    fn test_rafs_v6_blob_table_without_encryption() {
+        check_rafs_v6_blob_table(crypt::Algorithm::None);
+    }
+
+    fn check_rafs_v6_blob_table(cipher: crypt::Algorithm) {
         let mut table = RafsV6BlobTable::new();
         assert_eq!(table.size(), 0);
         table.add(
@@ -2726,8 +2749,8 @@ mod tests {
             0,
             false,
             BlobCompressionContextHeader::default(),
-            Arc::new(crypt::Algorithm::Aes128Xts.new_cipher().unwrap()),
-            Some(CipherContext::default()),
+            Arc::new(cipher.new_cipher().unwrap()),
+            (cipher != crypt::Algorithm::None).then(CipherContext::default),
         );
         assert_eq!(table.size(), size_of::<RafsV6Blob>());
         assert!(table.get(0).is_ok());
@@ -2752,7 +2775,17 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot execute OpenSSL native functions")]
     fn test_rafs_v6_blob_table_store() {
+        check_rafs_v6_blob_table_store(crypt::Algorithm::Aes128Xts);
+    }
+
+    #[test]
+    fn test_rafs_v6_blob_table_store_without_encryption() {
+        check_rafs_v6_blob_table_store(crypt::Algorithm::None);
+    }
+
+    fn check_rafs_v6_blob_table_store(cipher: crypt::Algorithm) {
         let mut table = RafsV6BlobTable::new();
         table.add(
             "0".to_string(),
@@ -2769,8 +2802,8 @@ mod tests {
             0,
             false,
             BlobCompressionContextHeader::default(),
-            Arc::new(crypt::Algorithm::Aes128Xts.new_cipher().unwrap()),
-            Some(CipherContext::default()),
+            Arc::new(cipher.new_cipher().unwrap()),
+            (cipher != crypt::Algorithm::None).then(CipherContext::default),
         );
 
         let (_reader, mut writer) = get_streams();

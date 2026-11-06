@@ -52,6 +52,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support spawning subprocesses")]
     fn test_exec() {
         let val = exec("echo hello", true, b"").unwrap();
         assert_eq!(val, "hello\n");
@@ -67,6 +68,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support spawning subprocesses")]
     fn test_exec_failure() {
         let result = exec("false", true, b"");
         assert!(result.is_err());

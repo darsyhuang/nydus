@@ -64,6 +64,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot execute native LZ4 functions")]
     fn test_error_input() {
         let mut big_buf = vec![0x0u8; u32::MAX as usize];
         let mock_compressed = vec![0x0u8; 32];

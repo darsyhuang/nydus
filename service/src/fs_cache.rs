@@ -965,11 +965,11 @@ mod tests {
     use super::*;
     use crate::blob_cache::BlobCacheMgr;
     use std::sync::Arc;
-    use vmm_sys_util::tempdir::TempDir;
+    use tempfile::TempDir;
 
     fn create_test_handler() -> FsCacheHandler {
         let tmp_dir = TempDir::new().unwrap();
-        let cache_dir = tmp_dir.as_path().to_path_buf();
+        let cache_dir = tmp_dir.path().to_path_buf();
         let poller = Poll::new().unwrap();
         let waker = Arc::new(Waker::new(poller.registry(), Token(TOKEN_EVENT_WAKER)).unwrap());
         let file = File::create(cache_dir.join("cachefiles")).unwrap();

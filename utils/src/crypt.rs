@@ -483,6 +483,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot execute OpenSSL native functions")]
     fn test_aes_128_xts_encrypt() {
         let mut key = [0xcu8; 32];
         key[31] = 0xa;
@@ -520,6 +521,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot execute OpenSSL native functions")]
     fn test_aes_256_xts_encrypt() {
         let mut key = [0xcu8; 64];
         key[31] = 0xa;
@@ -553,6 +555,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot execute OpenSSL native functions")]
     fn test_aes_128_xts_decrypt() {
         let mut key = [0xcu8; 32];
         key[31] = 0xa;
@@ -584,6 +587,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot execute OpenSSL native functions")]
     fn test_aes_256_xts_decrypt() {
         let mut key = [0xcu8; 64];
         key[31] = 0xa;
@@ -615,6 +619,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot execute OpenSSL native functions")]
     fn test_aes_256_gcm() {
         let key = [0xcu8; 32];
         let mut tag = vec![0u8; 12];
@@ -681,9 +686,6 @@ mod tests {
     #[test]
     fn test_attribute() {
         let none = Algorithm::None.new_cipher().unwrap();
-        let aes128xts = Algorithm::Aes128Xts.new_cipher().unwrap();
-        let aes256xts = Algorithm::Aes256Xts.new_cipher().unwrap();
-        let aes256gcm = Algorithm::Aes256Gcm.new_cipher().unwrap();
 
         assert!(!Algorithm::None.is_encryption_enabled());
         assert!(Algorithm::Aes128Xts.is_encryption_enabled());
@@ -724,11 +726,20 @@ mod tests {
         assert!(Algorithm::try_from(Algorithm::Aes256Gcm as u64).is_ok());
         assert!(Algorithm::try_from(u64::MAX).is_err());
 
-        println!("{:?},{:?},{:?},{:?}", none, aes128xts, aes256xts, aes256gcm);
+        println!("{:?}", none);
     }
 
     #[test]
-    fn test_crypt_with_context() {
+    #[cfg_attr(miri, ignore = "Miri cannot execute OpenSSL native functions")]
+    fn test_cipher_debug() {
+        let aes128xts = Algorithm::Aes128Xts.new_cipher().unwrap();
+        let aes256xts = Algorithm::Aes256Xts.new_cipher().unwrap();
+        let aes256gcm = Algorithm::Aes256Gcm.new_cipher().unwrap();
+        println!("{:?},{:?},{:?}", aes128xts, aes256xts, aes256gcm);
+    }
+
+    #[test]
+    fn test_crypt_context_validation_and_bypass() {
         let error_key = [0xcu8, 64];
         let symmetry_key = [0xcu8, 32];
         let mut key = [0xcu8; 32];
@@ -752,7 +763,7 @@ mod tests {
         // test context is none
         let ctx =
             CipherContext::new(key.to_vec(), iv.to_vec(), false, Algorithm::Aes128Xts).unwrap();
-        let obj = Arc::new(Algorithm::Aes128Xts.new_cipher().unwrap());
+        let obj = Arc::new(Cipher::None);
         assert!(encrypt_with_context(data, &obj, &None, true).is_err());
         assert!(decrypt_with_context(b"somedata", &obj, &None, true).is_err());
 
@@ -763,7 +774,23 @@ mod tests {
         let plain_text_no_change =
             decrypt_with_context(&bind, &obj, &Some(ctx.clone()), false).unwrap();
         assert_eq!(plain_text_no_change.into_owned(), data);
+    }
 
+    #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot execute OpenSSL native functions")]
+    fn test_crypt_with_context() {
+        let mut key = [0xcu8; 32];
+        key[31] = 0xa;
+        let iv = [0u8; 16];
+        let data = b"11111111111111111";
+        let ctx =
+            CipherContext::new(key.to_vec(), iv.to_vec(), false, Algorithm::Aes128Xts).unwrap();
+        let obj = Arc::new(Algorithm::Aes128Xts.new_cipher().unwrap());
+        // Keep bypass checks with a real AES cipher in the native test as well.
+        let unchanged = encrypt_with_context(data, &obj, &Some(ctx.clone()), false).unwrap();
+        assert_eq!(unchanged.as_ref(), data);
+        let unchanged = decrypt_with_context(data, &obj, &Some(ctx.clone()), false).unwrap();
+        assert_eq!(unchanged.as_ref(), data);
         // test normal encrypt and decrypt
         let encrypt_text = encrypt_with_context(data, &obj, &Some(ctx.clone()), true).unwrap();
         let bind = encrypt_text.into_owned();
@@ -771,11 +798,10 @@ mod tests {
         assert_eq!(&plain_text.into_owned(), data);
     }
 
-    fn test_gen_key(convergent_encryption: bool) {
+    fn test_gen_key(convergent_encryption: bool) -> (Vec<u8>, Vec<u8>) {
         let mut key = [0xcu8; 32];
         key[31] = 0xa;
         let iv = [0u8; 16];
-        let data = b"11111111111111111";
         let ctx = CipherContext::new(
             key.to_vec(),
             iv.to_vec(),
@@ -783,16 +809,28 @@ mod tests {
             Algorithm::Aes128Xts,
         )
         .unwrap();
-        let obj = Arc::new(Algorithm::Aes128Xts.new_cipher().unwrap());
         let (gen_key, gen_iv) = ctx.generate_cipher_meta(&key);
-        let ciphertext = obj.encrypt(gen_key, Some(&gen_iv), data).unwrap();
-        let plaintext = obj.decrypt(gen_key, Some(&gen_iv), &ciphertext).unwrap();
-        assert_eq!(&plaintext, data);
+        assert_eq!(gen_key, key);
+        assert_eq!(gen_iv, iv);
+        (gen_key.to_vec(), gen_iv)
     }
 
     #[test]
     fn test_generate_cipher_meta() {
         test_gen_key(true);
         test_gen_key(false);
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot execute OpenSSL native functions")]
+    fn test_generate_cipher_meta_roundtrip() {
+        let data = b"11111111111111111";
+        for convergent_encryption in [true, false] {
+            let (key, iv) = test_gen_key(convergent_encryption);
+            let obj = Arc::new(Algorithm::Aes128Xts.new_cipher().unwrap());
+            let ciphertext = obj.encrypt(&key, Some(&iv), data).unwrap();
+            let plaintext = obj.decrypt(&key, Some(&iv), &ciphertext).unwrap();
+            assert_eq!(&plaintext, data);
+        }
     }
 }

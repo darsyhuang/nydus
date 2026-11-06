@@ -92,6 +92,7 @@ nydus-storage = { version = "0.7.2", path = "storage", features = [
 ] }
 
 [dev-dependencies]
+tempfile = { workspace = true }
 xattr = "1.0.1"
 vmm-sys-util = { workspace = true }
 
@@ -143,6 +144,8 @@ members = [
 ]
 
 [workspace.dependencies]
+tempfile = "3.24.0"
+
 # rust-vmm crates
 vhost = "0.15.0"
 virtio-bindings = "0.2.7"

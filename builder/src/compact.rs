@@ -692,7 +692,7 @@ mod tests {
     use nydus_utils::metrics::BackendMetrics;
     use nydus_utils::{compress, crypt};
     use std::any::Any;
-    use vmm_sys_util::tempdir::TempDir;
+    use tempfile::TempDir;
     use vmm_sys_util::tempfile::TempFile;
 
     #[doc(hidden)]
@@ -839,8 +839,7 @@ mod tests {
         ChunkKey::from(&cw);
     }
 
-    #[test]
-    fn test_chunk_set() {
+    fn populated_chunk_set() -> ChunkSet {
         let mut chunk_set1 = ChunkSet::new();
 
         let mut chunk_wrapper1 = ChunkWrapper::new(RafsVersion::V5);
@@ -868,7 +867,18 @@ mod tests {
         chunk_set2.merge(chunk_set1);
         assert_eq!(chunk_set2.total_size, 56);
         assert_eq!(chunk_set2.chunks.len(), 3);
+        chunk_set2
+    }
 
+    #[test]
+    fn test_chunk_set() {
+        populated_chunk_set();
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot execute OpenSSL native functions")]
+    fn test_chunk_set_dump() {
+        let chunk_set2 = populated_chunk_set();
         let build_ctx = BuildContext::default();
         let tmp_file = TempFile::new().unwrap();
         let blob_storage = ArtifactStorage::SingleFile(PathBuf::from(tmp_file.as_path()));
@@ -1003,10 +1013,10 @@ mod tests {
         });
 
         let tmpdir = TempDir::new()?;
-        let tmpfile = TempFile::new_in(tmpdir.as_path())?;
+        let tmpfile = TempFile::new_in(tmpdir.path())?;
         let node = Node::from_fs_object(
             RafsVersion::V6,
-            tmpdir.as_path().to_path_buf(),
+            tmpdir.path().to_path_buf(),
             tmpfile.as_path().to_path_buf(),
             Overlay::UpperAddition,
             RAFS_DEFAULT_CHUNK_SIZE as u32,
@@ -1027,6 +1037,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support file-backed bootstrap mappings")]
     fn test_blob_compactor_new() {
         let compactor = create_blob_compactor();
         assert!(compactor.is_ok());
@@ -1034,6 +1045,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support file-backed bootstrap mappings")]
     fn test_blob_compactor_load_chunk_dict_blobs() {
         let mut compactor = create_blob_compactor().unwrap();
         let chunk_dict = compactor.get_chunk_dict();
@@ -1093,10 +1105,10 @@ mod tests {
         compactor.states = vec![State::ChunkDict; 5];
 
         let tmpdir = TempDir::new()?;
-        let tmpfile = TempFile::new_in(tmpdir.as_path())?;
+        let tmpfile = TempFile::new_in(tmpdir.path())?;
         let node = Node::from_fs_object(
             RafsVersion::V6,
-            tmpdir.as_path().to_path_buf(),
+            tmpdir.path().to_path_buf(),
             tmpfile.as_path().to_path_buf(),
             Overlay::UpperAddition,
             RAFS_DEFAULT_CHUNK_SIZE as u32,
@@ -1105,10 +1117,10 @@ mod tests {
             false,
         )?;
         let mut tree = Tree::new(node);
-        let tmpfile2 = TempFile::new_in(tmpdir.as_path())?;
+        let tmpfile2 = TempFile::new_in(tmpdir.path())?;
         let mut node = Node::from_fs_object(
             RafsVersion::V6,
-            tmpdir.as_path().to_path_buf(),
+            tmpdir.path().to_path_buf(),
             tmpfile2.as_path().to_path_buf(),
             Overlay::UpperAddition,
             RAFS_DEFAULT_CHUNK_SIZE as u32,
@@ -1141,11 +1153,13 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support file-backed bootstrap mappings")]
     fn test_blob_compactor_load_and_dedup_chunks() {
         assert!(blob_compactor_load_and_dedup_chunks().is_ok());
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support file-backed bootstrap mappings")]
     fn test_blob_compactor_dump_new_blobs() {
         let tmp_dir = TempDir::new().unwrap();
         let build_ctx = BuildContext::new(
@@ -1157,7 +1171,7 @@ mod tests {
             true,
             WhiteoutSpec::None,
             ConversionType::DirectoryToRafs,
-            PathBuf::from(tmp_dir.as_path()),
+            PathBuf::from(tmp_dir.path()),
             Default::default(),
             None,
             None,
@@ -1233,7 +1247,7 @@ mod tests {
         compactor.states[0] = State::Invalid;
 
         let tmp_dir = TempDir::new().unwrap();
-        let dir = tmp_dir.as_path().to_str().unwrap();
+        let dir = tmp_dir.path().to_str().unwrap();
         assert!(compactor.dump_new_blobs(&build_ctx, dir, true).is_err());
 
         compactor.states = vec![
@@ -1248,6 +1262,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support file-backed bootstrap mappings")]
     fn test_blob_compactor_do_compact() {
         let mut compactor = blob_compactor_load_and_dedup_chunks().unwrap();
 
@@ -1261,7 +1276,7 @@ mod tests {
             true,
             WhiteoutSpec::None,
             ConversionType::DirectoryToRafs,
-            PathBuf::from(tmp_dir.as_path()),
+            PathBuf::from(tmp_dir.path()),
             Default::default(),
             None,
             None,

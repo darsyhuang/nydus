@@ -260,6 +260,7 @@ mod tests {
     use vmm_sys_util::tempfile::TempFile;
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot execute native zlib functions")]
     fn test_compress_algorithm_gzip() {
         let buf = vec![0x2u8; 4095];
         let compressed = compress(&buf, Algorithm::GZip).unwrap();
@@ -297,6 +298,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot execute native Zstandard functions")]
     fn test_compress_algorithm_ztsd() {
         let buf = vec![0x2u8; 4097];
         let mut decompressed = vec![0; buf.len()];
@@ -307,6 +309,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot execute native LZ4 functions")]
     fn test_compress_algorithm_lz4() {
         let buf = [
             0x1u8, 0x2u8, 0x3u8, 0x4u8, 0x1u8, 0x2u8, 0x3u8, 0x4u8, 0x1u8, 0x2u8, 0x3u8, 0x4u8,
@@ -324,6 +327,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot execute native LZ4 functions")]
     fn test_lz4_compress_decompress_1_byte() {
         let buf = vec![0x1u8];
         let compressed = lz4_compress(&buf).unwrap();
@@ -340,6 +344,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot execute native LZ4 functions")]
     fn test_lz4_compress_decompress_2_bytes() {
         let buf = vec![0x2u8, 0x3u8];
         let compressed = lz4_compress(&buf).unwrap();
@@ -356,6 +361,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot execute native LZ4 functions")]
     fn test_lz4_compress_decompress_16_bytes() {
         let buf = [
             0x1u8, 0x2u8, 0x3u8, 0x4u8, 0x1u8, 0x2u8, 0x3u8, 0x4u8, 0x1u8, 0x2u8, 0x3u8, 0x4u8,
@@ -375,6 +381,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot execute native LZ4 functions")]
     fn test_lz4_compress_decompress_4095_bytes() {
         let buf = vec![0x2u8; 4095];
         let compressed = lz4_compress(&buf).unwrap();
@@ -391,6 +398,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot execute native LZ4 functions")]
     fn test_lz4_compress_decompress_4096_bytes() {
         let buf = vec![0x2u8; 4096];
         let compressed = lz4_compress(&buf).unwrap();
@@ -407,6 +415,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot execute native LZ4 functions")]
     fn test_lz4_compress_decompress_4097_bytes() {
         let buf = vec![0x2u8; 4097];
         let compressed = lz4_compress(&buf).unwrap();
@@ -423,6 +432,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot execute native Zstandard functions")]
     fn test_zstd_compress_decompress_1_byte() {
         let buf = vec![0x1u8];
         let compressed = zstd_compress(&buf).unwrap();
@@ -434,6 +444,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot execute native Zstandard functions")]
     fn test_zstd_compress_decompress_2_bytes() {
         let buf = vec![0x2u8, 0x3u8];
         let compressed = zstd_compress(&buf).unwrap();
@@ -445,6 +456,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot execute native Zstandard functions")]
     fn test_zstd_compress_decompress_16_bytes() {
         let buf = [
             0x1u8, 0x2u8, 0x3u8, 0x4u8, 0x1u8, 0x2u8, 0x3u8, 0x4u8, 0x1u8, 0x2u8, 0x3u8, 0x4u8,
@@ -459,6 +471,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot execute native Zstandard functions")]
     fn test_zstd_compress_decompress_4095_bytes() {
         let buf = vec![0x2u8; 4095];
         let compressed = zstd_compress(&buf).unwrap();
@@ -470,6 +483,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot execute native Zstandard functions")]
     fn test_zstd_compress_decompress_4096_bytes() {
         let buf = vec![0x2u8; 4096];
         let compressed = zstd_compress(&buf).unwrap();
@@ -481,6 +495,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot execute native Zstandard functions")]
     fn test_zstd_compress_decompress_4097_bytes() {
         let buf = vec![0x2u8; 4097];
         let compressed = zstd_compress(&buf).unwrap();
@@ -502,6 +517,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot execute native zlib functions")]
     fn test_gzip_decoder() {
         let root_dir = &std::env::var("CARGO_MANIFEST_DIR").expect("$CARGO_MANIFEST_DIR");
         let path = Path::new(root_dir).join("../tests/texture/zran/zlib_sample.txt.gz");
@@ -523,6 +539,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot execute native zlib functions")]
     fn test_zlib_decoder() {
         let root_dir = &std::env::var("CARGO_MANIFEST_DIR").expect("$CARGO_MANIFEST_DIR");
         let path = Path::new(root_dir).join("../tests/texture/zran/zlib_sample.txt.gz");

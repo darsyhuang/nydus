@@ -908,15 +908,20 @@ mod tests {
     use nydus_rafs::metadata::layout::v6::{EROFS_INODE_CHUNK_BASED, EROFS_INODE_SLOT_SIZE};
     use nydus_rafs::metadata::{RafsVersion, RAFS_DEFAULT_CHUNK_SIZE};
     use std::fs::File;
-    use vmm_sys_util::{tempdir::TempDir, tempfile::TempFile};
+    use tempfile::TempDir;
+    use vmm_sys_util::tempfile::TempFile;
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri does not support native extended attribute operations"
+    )]
     fn test_set_v6_offset() {
         let pa = TempDir::new().unwrap();
-        let pa_aa = TempFile::new_in(pa.as_path()).unwrap();
-        let mut node = Node::from_fs_object(
+        let pa_aa = TempFile::new_in(pa.path()).unwrap();
+        let node = Node::from_fs_object(
             RafsVersion::V6,
-            pa.as_path().to_path_buf(),
+            pa.path().to_path_buf(),
             pa_aa.as_path().to_path_buf(),
             Overlay::UpperAddition,
             RAFS_DEFAULT_CHUNK_SIZE as u32,
@@ -928,7 +933,39 @@ mod tests {
 
         let bootstrap_path = TempFile::new().unwrap();
         let storage = ArtifactStorage::SingleFile(bootstrap_path.as_path().to_path_buf());
-        let mut bootstrap_ctx = BootstrapContext::new(Some(storage), false).unwrap();
+        let bootstrap_ctx = BootstrapContext::new(Some(storage), false).unwrap();
+
+        // symlink and dir are handled in the same way.
+        let dir_node = Node::from_fs_object(
+            RafsVersion::V6,
+            pa.path().to_path_buf(),
+            pa.path().to_path_buf(),
+            Overlay::UpperAddition,
+            RAFS_DEFAULT_CHUNK_SIZE as u32,
+            0,
+            false,
+            false,
+        )
+        .unwrap();
+
+        check_set_v6_offset(node, dir_node, bootstrap_ctx);
+    }
+
+    #[test]
+    fn test_set_v6_offset_in_memory() {
+        let mut node = crate::tests::memory_node("/file", libc::S_IFREG);
+        let mut dir_node = crate::tests::memory_node("/dir", libc::S_IFDIR);
+        node.v6_set_inode_compact();
+        dir_node.v6_set_inode_compact();
+        let bootstrap_ctx = BootstrapContext::new(None, false).unwrap();
+        check_set_v6_offset(node, dir_node, bootstrap_ctx);
+    }
+
+    fn check_set_v6_offset(
+        mut node: Node,
+        mut dir_node: Node,
+        mut bootstrap_ctx: BootstrapContext,
+    ) {
         bootstrap_ctx.offset = 0;
 
         // reg file.
@@ -940,19 +977,6 @@ mod tests {
         assert_eq!(node.v6_datalayout, EROFS_INODE_CHUNK_BASED);
         assert!(node.v6_compact_inode);
         assert_eq!(bootstrap_ctx.offset, 32);
-
-        // symlink and dir are handled in the same way.
-        let mut dir_node = Node::from_fs_object(
-            RafsVersion::V6,
-            pa.as_path().to_path_buf(),
-            pa.as_path().to_path_buf(),
-            Overlay::UpperAddition,
-            RAFS_DEFAULT_CHUNK_SIZE as u32,
-            0,
-            false,
-            false,
-        )
-        .unwrap();
 
         dir_node
             .v6_set_dir_offset(&mut bootstrap_ctx, 4064, EROFS_BLOCK_SIZE_4096)
@@ -1033,15 +1057,19 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri does not support native extended attribute operations"
+    )]
     fn test_set_v6_inode_compact() {
         let pa = TempDir::new().unwrap();
-        let pa_reg = TempFile::new_in(pa.as_path()).unwrap();
-        let pa_pyc = pa.as_path().join("foo.pyc");
+        let pa_reg = TempFile::new_in(pa.path()).unwrap();
+        let pa_pyc = pa.path().join("foo.pyc");
         let _ = File::create(&pa_pyc).unwrap();
 
         let reg_node = Node::from_fs_object(
             RafsVersion::V6,
-            pa.as_path().to_path_buf(),
+            pa.path().to_path_buf(),
             pa_reg.as_path().to_path_buf(),
             Overlay::UpperAddition,
             RAFS_DEFAULT_CHUNK_SIZE as u32,
@@ -1055,7 +1083,7 @@ mod tests {
 
         let pyc_node = Node::from_fs_object(
             RafsVersion::V6,
-            pa.as_path().to_path_buf(),
+            pa.path().to_path_buf(),
             pa_pyc.as_path().to_path_buf(),
             Overlay::UpperAddition,
             RAFS_DEFAULT_CHUNK_SIZE as u32,
@@ -1068,5 +1096,16 @@ mod tests {
         assert!(!pyc_node.v6_compact_inode);
 
         std::fs::remove_file(&pa_pyc).unwrap();
+    }
+
+    #[test]
+    fn test_set_v6_inode_compact_in_memory() {
+        let mut regular = crate::tests::memory_node("/file", libc::S_IFREG);
+        regular.v6_set_inode_compact();
+        assert!(regular.v6_compact_inode);
+
+        let mut pyc = crate::tests::memory_node("/foo.pyc", libc::S_IFREG);
+        pyc.v6_set_inode_compact();
+        assert!(!pyc.v6_compact_inode);
     }
 }

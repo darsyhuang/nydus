@@ -347,13 +347,13 @@ impl AsRawFd for Server {
 mod tests {
     use super::*;
     use std::time::{Duration, Instant};
-    use vmm_sys_util::tempdir::TempDir;
+    use tempfile::TempDir;
 
     #[test]
     #[ignore]
     fn test_new_server() {
         let tmpdir = TempDir::new().unwrap();
-        let sock = tmpdir.as_path().to_str().unwrap().to_owned() + "/test_sock1";
+        let sock = tmpdir.path().to_str().unwrap().to_owned() + "/test_sock1";
         let server = Arc::new(Server::new(&sock).unwrap());
 
         assert_eq!(server.state.active_workers.load(Ordering::Relaxed), 0);
@@ -387,7 +387,7 @@ mod tests {
     #[ignore]
     fn test_reconnect() {
         let tmpdir = TempDir::new().unwrap();
-        let sock = tmpdir.as_path().to_str().unwrap().to_owned() + "/test_sock1";
+        let sock = tmpdir.path().to_str().unwrap().to_owned() + "/test_sock1";
 
         let server = Arc::new(Server::new(&sock).unwrap());
         Server::start(server.clone()).unwrap();
