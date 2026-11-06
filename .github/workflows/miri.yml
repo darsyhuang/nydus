@@ -48,5 +48,5 @@ jobs:
         bash misc/ci-run-with-log.sh miri-ut.log \
           sudo env CARGO_HOME="${CARGO_HOME}" RUSTUP_HOME="${RUSTUP_HOME}" \
             PATH="${PATH}" RUSTUP="${RUSTUP_BIN}" make miri-ut-nextest || status=$?
-        grep -C 2 'Undefined Behavior' miri-ut.log || true
+        python3 misc/ci-miri-summary.py miri-ut.log || true
         exit "${status}"
