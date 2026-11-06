@@ -126,9 +126,9 @@ mod tests {
         std::fs::write(file.as_path(), b"This is a test").unwrap();
         let mut reader = FileRangeReader::new(file.as_file(), 4, 6);
         let mut buf = vec![0u8; 128];
-        let res = reader.read(&mut buf).unwrap();
-        assert_eq!(res, 6);
+        reader.read_exact(&mut buf[..6]).unwrap();
         assert_eq!(&buf[..6], b" is a ".as_slice());
+        assert!(buf[6..].iter().all(|byte| *byte == 0));
         let res = reader.read(&mut buf).unwrap();
         assert_eq!(res, 0);
     }

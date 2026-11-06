@@ -414,13 +414,13 @@ mod tests {
         assert_eq!(blob.blob_size().unwrap(), 4096);
 
         let mut buf = vec![0u8; 4096];
-        let sz = blob.read(&mut buf, 0).unwrap();
+        let sz = blob.read_all(&mut buf, 0).unwrap();
         assert_eq!(sz, 4096);
-        let sz = blob.read(&mut buf, 4095).unwrap();
+        let sz = blob.read_all(&mut buf, 4095).unwrap();
         assert_eq!(sz, 1);
-        let sz = blob.read(&mut buf, 4096).unwrap();
+        let sz = blob.read_all(&mut buf, 4096).unwrap();
         assert_eq!(sz, 0);
-        let sz = blob.read(&mut buf, 4097).unwrap();
+        let sz = blob.read_all(&mut buf, 4097).unwrap();
         assert_eq!(sz, 0);
     }
 
