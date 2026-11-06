@@ -160,13 +160,17 @@ pub fn copy_file_range(
             return Err(eio!("reach end of file when read in copy_file_range"));
         }
 
-        let write_bytes = nix::sys::uio::pwrite(
-            dst.as_fd().as_raw_fd(),
-            &buf[..read_bytes],
-            dst_off as libc::off_t,
-        )?;
-        if write_bytes == 0 {
-            return Err(eio!("reach end of file when write in copy_file_range"));
+        let mut written = 0;
+        while written < read_bytes {
+            let write_bytes = nix::sys::uio::pwrite(
+                dst.as_fd().as_raw_fd(),
+                &buf[written..read_bytes],
+                (dst_off + written as u64) as libc::off_t,
+            )?;
+            if write_bytes == 0 {
+                return Err(eio!("reach end of file when write in copy_file_range"));
+            }
+            written += write_bytes;
         }
 
         src_off += read_bytes as u64;
@@ -736,6 +740,8 @@ mod tests {
 
     #[test]
     fn test_copy_file_range() {
+        use std::os::unix::fs::FileExt;
+
         let mut src = TempFile::new().unwrap().into_file();
         let dst = TempFile::new().unwrap();
 
@@ -743,6 +749,9 @@ mod tests {
         src.write_all(&buf).unwrap();
         copy_file_range(&src, 0, dst.as_file(), 4096, 4096).unwrap();
         assert_eq!(dst.as_file().metadata().unwrap().len(), 8192);
+        let mut copied = vec![0u8; buf.len()];
+        dst.as_file().read_exact_at(&mut copied, 4096).unwrap();
+        assert_eq!(copied, buf);
 
         let small_buf = vec![8u8; 2048];
         let mut small_src = TempFile::new().unwrap().into_file();
