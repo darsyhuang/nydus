@@ -867,7 +867,7 @@ mod tests {
         let tmp_dir = tmp_dir.path().to_path_buf();
         let source_path = tmp_dir.join("hardlink.tar");
         create_hardlink_tar(&source_path);
-        let mut ctx = create_context(source_path.clone(), version);
+        let mut ctx = create_context(source_path, version);
         let bootstrap = build_rafs(&mut ctx);
 
         // A hardlink to a symlink becomes an independent symlink node with the same target,
@@ -910,8 +910,14 @@ mod tests {
         assert_eq!(foo_link.inode.size(), 5);
         assert_eq!(foo_link.inode.child_count(), 1);
         assert_eq!(foo_link.chunks.len(), 1);
+    }
 
+    fn test_hardlink_full_conversion(version: RafsVersion) {
         // The same tarball must also convert end to end, including blob and bootstrap dump.
+        let tmp_dir = tempfile::TempDir::new().unwrap();
+        let tmp_dir = tmp_dir.path().to_path_buf();
+        let source_path = tmp_dir.join("hardlink.tar");
+        create_hardlink_tar(&source_path);
         let mut ctx = create_context(source_path, version);
         ctx.blob_storage = Some(ArtifactStorage::FileDir((tmp_dir.clone(), String::new())));
         let mut bootstrap_mgr = BootstrapManager::new(
@@ -932,6 +938,24 @@ mod tests {
     #[test]
     fn test_v6_hardlink_to_non_regular_file() {
         test_hardlink_to_non_regular_file(RafsVersion::V6);
+    }
+
+    #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "full builds intentionally leave a delayed-drop thread running"
+    )]
+    fn test_v5_hardlink_full_conversion() {
+        test_hardlink_full_conversion(RafsVersion::V5);
+    }
+
+    #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "full builds intentionally leave a delayed-drop thread running"
+    )]
+    fn test_v6_hardlink_full_conversion() {
+        test_hardlink_full_conversion(RafsVersion::V6);
     }
 
     // Append an entry whose `devmajor`/`devminor` fields are left NUL, the way Go's
@@ -1071,6 +1095,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "full builds intentionally leave a delayed-drop thread running"
+    )]
     fn test_build_tarfs() {
         let tmp_dir = tempfile::TempDir::new().unwrap();
         let tmp_dir = tmp_dir.path().to_path_buf();
