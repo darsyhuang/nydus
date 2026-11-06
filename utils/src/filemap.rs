@@ -329,6 +329,7 @@ mod tests {
     use std::path::PathBuf;
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support file-backed memory mappings")]
     fn mapped_slice_checks_range_and_alignment() {
         let temp = TempFile::new().unwrap();
         temp.as_file()
@@ -351,6 +352,54 @@ mod tests {
     }
 
     #[test]
+    fn anonymous_mapping_checks_typed_views_and_ownership() {
+        // Anonymous private mappings are supported by Miri, so exercise the Rust
+        // view and ownership checks without depending on file-backed mmap support.
+        let base = unsafe {
+            libc::mmap(
+                std::ptr::null_mut(),
+                4096,
+                libc::PROT_READ | libc::PROT_WRITE,
+                libc::MAP_PRIVATE | libc::MAP_ANONYMOUS,
+                -1,
+                0,
+            )
+        };
+        assert_ne!(base, libc::MAP_FAILED);
+        assert!(!base.is_null());
+        let mut map = FileMapState {
+            base: base.cast(),
+            size: 4096,
+            fd: -1,
+            writable: true,
+        };
+        unsafe {
+            map.get_slice_mut::<u32>(0, 2)
+                .unwrap()
+                .copy_from_slice(&[1, 2]);
+        }
+        assert_eq!(*map.get_ref::<u32>(4).unwrap(), 2);
+        assert!(map.get_ref::<u32>(1).is_err());
+        assert!(map.get_slice::<u64>(0, usize::MAX).is_err());
+        map.writable = false;
+        assert!(unsafe { map.get_mut::<u32>(0) }.is_err());
+        let map = Arc::new(map);
+        let view = MappedSlice::<u32>::new(map.clone(), 0, 2).unwrap();
+        assert_eq!(&*view, &[1, 2]);
+        assert!(MappedSlice::<u32>::new(map.clone(), 1, 1).is_err());
+        assert!(MappedSlice::<u32>::new(map.clone(), 4092, 2).is_err());
+        assert!(MappedSlice::<u32>::new(map.clone(), 0, usize::MAX).is_err());
+        assert!(MappedSlice::<u32>::new(map.clone(), 4096, 0)
+            .unwrap()
+            .is_empty());
+        let clone = view.clone();
+        drop(map);
+        drop(view);
+        assert_eq!(&*clone, &[1, 2]);
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support file-backed memory mappings")]
     fn create_file_map_object() {
         let root_dir = &std::env::var("CARGO_MANIFEST_DIR").expect("$CARGO_MANIFEST_DIR");
         let path = PathBuf::from(root_dir).join("../tests/texture/bootstrap/rafs-v5.boot");
@@ -375,11 +424,20 @@ mod tests {
 
     #[test]
     fn create_default_file_map_object() {
-        let map = FileMapState::default();
-        drop(map);
+        let mut empty = FileMapState::default();
+        unsafe {
+            assert!(empty.get_ref::<[u8; 0]>(0).is_ok());
+            assert!(empty.get_slice::<u8>(0, 0).is_ok());
+            assert!(empty.get_slice::<u8>(1, 0).is_err());
+            assert!(empty.get_ref::<u8>(0).is_err());
+            assert!(empty.get_mut::<[u8; 0]>(0).is_err());
+        }
+        assert!(empty.sync_data().is_err());
+        assert!(empty.validate_range(0, 0).is_err());
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support file-backed memory mappings")]
     fn test_file_map_error() {
         let temp = TempFile::new().unwrap();
         temp.as_file().set_len(4096).unwrap();
@@ -411,6 +469,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support file-backed memory mappings")]
     fn typed_mapping_checks_alignment_permissions_and_empty_state() {
         let temp = TempFile::new().unwrap();
         temp.as_file().set_len(4096).unwrap();
@@ -436,16 +495,11 @@ mod tests {
             assert!(map.get_mut::<u32>(4).is_err());
             assert!(map.get_slice_mut::<u8>(0, 1).is_err());
         }
-        let mut empty = FileMapState::default();
-        unsafe {
-            assert!(empty.get_ref::<[u8; 0]>(0).is_ok());
-            assert!(empty.get_slice::<u8>(0, 0).is_ok());
-            assert!(empty.get_slice::<u8>(1, 0).is_err());
-            assert!(empty.get_ref::<u8>(0).is_err());
-            assert!(empty.get_mut::<[u8; 0]>(0).is_err());
-        }
-        assert!(empty.sync_data().is_err());
-        assert!(empty.validate_range(0, 0).is_err());
+    }
+
+    #[test]
+    fn zero_length_mapping_is_rejected() {
+        let temp = TempFile::new().unwrap();
         assert!(
             unsafe { FileMapState::new(temp.as_file().try_clone().unwrap(), 0, 0, false) }.is_err()
         );

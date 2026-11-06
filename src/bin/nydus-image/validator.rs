@@ -84,14 +84,14 @@ mod tests {
         Arc::new(serde_json::from_str(&content).unwrap())
     }
 
-    fn prepare_fixture_root() -> (vmm_sys_util::tempdir::TempDir, PathBuf) {
-        let tmp_dir = vmm_sys_util::tempdir::TempDir::new().unwrap();
+    fn prepare_fixture_root() -> (tempfile::TempDir, PathBuf) {
+        let tmp_dir = tempfile::TempDir::new().unwrap();
         let root_dir = std::env::var("CARGO_MANIFEST_DIR").expect("$CARGO_MANIFEST_DIR");
         let fixture_blob = PathBuf::from(&root_dir).join(
             "tests/texture/blobs/be7d77eeb719f70884758d1aa800ed0fb09d701aaec469964e9d54325f0d5fef",
         );
         let target_blob = tmp_dir
-            .as_path()
+            .path()
             .join("be7d77eeb719f70884758d1aa800ed0fb09d701aaec469964e9d54325f0d5fef");
         fs::copy(fixture_blob, target_blob).unwrap();
 
@@ -106,9 +106,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support file-backed bootstrap mappings")]
     fn test_validator_check_returns_blob_metadata() {
         let (tmp_dir, bootstrap) = prepare_fixture_root();
-        let config = create_test_config(tmp_dir.as_path().to_str().unwrap());
+        let config = create_test_config(tmp_dir.path().to_str().unwrap());
 
         let mut validator = Validator::new(&bootstrap, config).unwrap();
         let (blobs, compressor, rafs_version) = validator.check(false).unwrap();

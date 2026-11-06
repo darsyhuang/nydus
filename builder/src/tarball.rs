@@ -863,8 +863,8 @@ mod tests {
     }
 
     fn test_hardlink_to_non_regular_file(version: RafsVersion) {
-        let tmp_dir = vmm_sys_util::tempdir::TempDir::new().unwrap();
-        let tmp_dir = tmp_dir.as_path().to_path_buf();
+        let tmp_dir = tempfile::TempDir::new().unwrap();
+        let tmp_dir = tmp_dir.path().to_path_buf();
         let source_path = tmp_dir.join("hardlink.tar");
         create_hardlink_tar(&source_path);
         let mut ctx = create_context(source_path.clone(), version);
@@ -953,8 +953,8 @@ mod tests {
     }
 
     fn test_fifo_without_device_numbers(version: RafsVersion) {
-        let tmp_dir = vmm_sys_util::tempdir::TempDir::new().unwrap();
-        let source_path = tmp_dir.as_path().join("fifo.tar");
+        let tmp_dir = tempfile::TempDir::new().unwrap();
+        let source_path = tmp_dir.path().join("fifo.tar");
         let mut tar = tar::Builder::new(File::create(&source_path).unwrap());
         append_entry_without_device_numbers(&mut tar, "fifo-entry", EntryType::Fifo);
         tar.finish().unwrap();
@@ -983,8 +983,8 @@ mod tests {
     // Character and block special files are the two types POSIX defines `devmajor`/`devminor`
     // for, so they must keep round-tripping their device number.
     fn test_device_files_keep_rdev(version: RafsVersion) {
-        let tmp_dir = vmm_sys_util::tempdir::TempDir::new().unwrap();
-        let source_path = tmp_dir.as_path().join("devices.tar");
+        let tmp_dir = tempfile::TempDir::new().unwrap();
+        let source_path = tmp_dir.path().join("devices.tar");
         let mut tar = tar::Builder::new(File::create(&source_path).unwrap());
         for (name, entry_type) in [("chr", EntryType::Char), ("blk", EntryType::Block)] {
             let mut header = Header::new_ustar();
@@ -1020,8 +1020,8 @@ mod tests {
 
     #[test]
     fn test_hardlink_to_directory_is_rejected() {
-        let tmp_dir = vmm_sys_util::tempdir::TempDir::new().unwrap();
-        let source_path = tmp_dir.as_path().join("hardlink-dir.tar");
+        let tmp_dir = tempfile::TempDir::new().unwrap();
+        let source_path = tmp_dir.path().join("hardlink-dir.tar");
         let mut tar = tar::Builder::new(File::create(&source_path).unwrap());
         append_entry(&mut tar, "dir/", EntryType::Directory, None, b"");
         append_entry(&mut tar, "dir-link", EntryType::Link, Some("dir"), b"");
@@ -1036,8 +1036,8 @@ mod tests {
     fn test_hardlink_to_unknown_target_is_rejected() {
         // A tar entry may only be hardlinked to an entry which appeared earlier in the stream,
         // because the tarball is parsed in a single pass.
-        let tmp_dir = vmm_sys_util::tempdir::TempDir::new().unwrap();
-        let source_path = tmp_dir.as_path().join("hardlink-unknown.tar");
+        let tmp_dir = tempfile::TempDir::new().unwrap();
+        let source_path = tmp_dir.path().join("hardlink-unknown.tar");
         let mut tar = tar::Builder::new(File::create(&source_path).unwrap());
         append_entry(&mut tar, "sym-link", EntryType::Link, Some("sym"), b"");
         append_entry(&mut tar, "sym", EntryType::Symlink, Some("foo"), b"");
@@ -1050,8 +1050,8 @@ mod tests {
 
     #[test]
     fn test_malformed_pax_extension_is_rejected() {
-        let tmp_dir = vmm_sys_util::tempdir::TempDir::new().unwrap();
-        let source_path = tmp_dir.as_path().join("bad-pax.tar");
+        let tmp_dir = tempfile::TempDir::new().unwrap();
+        let source_path = tmp_dir.path().join("bad-pax.tar");
         let mut tar = tar::Builder::new(File::create(&source_path).unwrap());
         // A PAX record starts with its own length in decimal, here reported too long.
         let pax = "99 SCHILY.xattr.user.key=value\n";
@@ -1072,8 +1072,8 @@ mod tests {
 
     #[test]
     fn test_build_tarfs() {
-        let tmp_dir = vmm_sys_util::tempdir::TempDir::new().unwrap();
-        let tmp_dir = tmp_dir.as_path().to_path_buf();
+        let tmp_dir = tempfile::TempDir::new().unwrap();
+        let tmp_dir = tmp_dir.path().to_path_buf();
         let root_dir = &std::env::var("CARGO_MANIFEST_DIR").expect("$CARGO_MANIFEST_DIR");
         let source_path = PathBuf::from(root_dir).join("../tests/texture/tar/all-entry-type.tar");
         let prefetch = Prefetch::default();
@@ -1107,9 +1107,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot execute OpenSSL native functions")]
     fn test_build_encrypted_tarfs() {
-        let tmp_dir = vmm_sys_util::tempdir::TempDir::new().unwrap();
-        let tmp_dir = tmp_dir.as_path().to_path_buf();
+        let tmp_dir = tempfile::TempDir::new().unwrap();
+        let tmp_dir = tmp_dir.path().to_path_buf();
         let root_dir = &std::env::var("CARGO_MANIFEST_DIR").expect("$CARGO_MANIFEST_DIR");
         let source_path = PathBuf::from(root_dir).join("../tests/texture/tar/all-entry-type.tar");
         let prefetch = Prefetch::default();
@@ -1143,11 +1144,13 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot execute native gzip functions")]
     fn test_zran_metadata_after_chunk_deduplication() {
         check_zran_metadata_after_chunk_deduplication(false);
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot execute native gzip functions")]
     fn test_compact_zran_metadata_after_chunk_deduplication() {
         check_zran_metadata_after_chunk_deduplication(true);
     }
@@ -1163,12 +1166,12 @@ mod tests {
         };
         use nydus_utils::compress::zlib_random::ZranDecoder;
 
-        let tmp_dir = vmm_sys_util::tempdir::TempDir::new().unwrap();
-        let tar_path = tmp_dir.as_path().join("source.tar");
-        let source_path = tmp_dir.as_path().join("source.tar.gz");
-        let bootstrap_path = tmp_dir.as_path().join("bootstrap");
-        let meta_blob_path = tmp_dir.as_path().join("meta-blob");
-        let cache_path = tmp_dir.as_path().join("cached-blob");
+        let tmp_dir = tempfile::TempDir::new().unwrap();
+        let tar_path = tmp_dir.path().join("source.tar");
+        let source_path = tmp_dir.path().join("source.tar.gz");
+        let bootstrap_path = tmp_dir.path().join("bootstrap");
+        let meta_blob_path = tmp_dir.path().join("meta-blob");
+        let cache_path = tmp_dir.path().join("cached-blob");
 
         // Keep the compressed file large enough to start a new inflate context for each
         // entry, while allowing the builder to deduplicate three identical file chunks.
@@ -1202,7 +1205,7 @@ mod tests {
         ctx.blob_features
             .insert(BlobFeatures::ALIGNED | BlobFeatures::CHUNK_INFO_V2 | BlobFeatures::SEPARATE);
         ctx.blob_storage = Some(ArtifactStorage::SingleFile(meta_blob_path.clone()));
-        let builder_cache_dir = tmp_dir.as_path().join("builder-cache");
+        let builder_cache_dir = tmp_dir.path().join("builder-cache");
         if compact {
             ctx.features = Features::try_from("blob-toc").unwrap();
             ctx.blob_features
@@ -1264,7 +1267,7 @@ mod tests {
             header.set_ci_zran_count(inflate_count);
             header.set_ci_zran_size(inflate_data.len() as u64);
             assert_eq!(header.ci_zran_count(), 4);
-            metadata_path = tmp_dir.as_path().join("legacy-meta-blob");
+            metadata_path = tmp_dir.path().join("legacy-meta-blob");
             let mut file = File::create(&metadata_path).unwrap();
             file.write_all(&ci_data).unwrap();
             file.write_all(header.as_bytes()).unwrap();
@@ -1408,8 +1411,8 @@ mod tests {
         version: RafsVersion,
         xattr_on: &str,
     ) -> nydus_rafs::metadata::RafsSuper {
-        let tmp_dir = vmm_sys_util::tempdir::TempDir::new().unwrap();
-        let tmp_dir = tmp_dir.as_path().to_path_buf();
+        let tmp_dir = tempfile::TempDir::new().unwrap();
+        let tmp_dir = tmp_dir.path().to_path_buf();
         let source_path = tmp_dir.join("xattr-hardlink.tar");
         let bootstrap_path = tmp_dir.join("bootstrap");
         create_xattr_hardlink_tar(&source_path, xattr_on);
@@ -1464,6 +1467,7 @@ mod tests {
     // the xattr table itself is written whenever the node has xattrs. If the two disagree, every
     // inode after the hardlink is written at the wrong offset and the bootstrap can't be loaded.
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support file-backed bootstrap mappings")]
     fn test_v5_hardlink_inherits_xattr_flag_from_target() {
         let sb = build_and_load_xattr_hardlink_tar(RafsVersion::V5, "foo");
         // Both names of the hardlink resolve to the inode of the target, which carries the xattr.
@@ -1479,6 +1483,7 @@ mod tests {
     // write past that region, leaking them onto the target and corrupting the inodes stored after
     // it, so the xattrs of the target win even when only the hardlink entry recorded any.
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support file-backed bootstrap mappings")]
     fn test_v6_hardlink_xattrs_stay_identical_to_target() {
         let sb = build_and_load_xattr_hardlink_tar(RafsVersion::V6, "foo-link");
         assert_eq!(xattr_count(&sb, "foo"), 0);

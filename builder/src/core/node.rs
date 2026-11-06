@@ -1061,8 +1061,7 @@ mod tests {
         assert_eq!(chunk.inner.file_offset(), 0x40);
     }
 
-    #[test]
-    fn test_node_dump_node_data() {
+    fn check_node_dump_node_data(cipher: crypt::Algorithm) {
         let root_dir = &std::env::var("CARGO_MANIFEST_DIR").expect("$CARGO_MANIFEST_DIR");
         let mut source_path = PathBuf::from(root_dir);
         source_path.push("../tests/texture/blobs/be7d77eeb719f70884758d1aa800ed0fb09d701aaec469964e9d54325f0d5fef");
@@ -1088,7 +1087,7 @@ mod tests {
         let mut ctx = BuildContext::default();
         ctx.set_chunk_size(2);
         ctx.conversion_type = ConversionType::TarToRef;
-        ctx.cipher = crypt::Algorithm::Aes128Xts;
+        ctx.cipher = cipher;
         let tmp_file1 = TempFile::new().unwrap();
         std::fs::write(
             tmp_file1.as_path(),
@@ -1149,6 +1148,17 @@ mod tests {
             node.dump_node_data(&ctx, &mut blob_mgr, &mut blob_writer, &mut chunk_data_buf);
         assert!(data_size.is_ok());
         assert_eq!(data_size.unwrap(), 18);
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot execute OpenSSL native functions")]
+    fn test_node_dump_node_data() {
+        check_node_dump_node_data(crypt::Algorithm::Aes128Xts);
+    }
+
+    #[test]
+    fn test_node_dump_node_data_without_encryption() {
+        check_node_dump_node_data(crypt::Algorithm::None);
     }
 
     #[test]

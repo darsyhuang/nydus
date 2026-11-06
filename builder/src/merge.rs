@@ -565,6 +565,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support file-backed bootstrap mappings")]
     fn test_merger_merge() {
         let mut ctx = BuildContext::default();
         ctx.configuration.internal.set_blob_accessible(false);

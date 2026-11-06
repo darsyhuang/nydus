@@ -214,11 +214,17 @@ impl<R: Read> ZranContextGenerator<R> {
     /// remapped indexes. Neither the generator nor the input table is changed, so the same
     /// generator can be used to serialize different blobs or the same blob again.
     pub fn to_blob_meta(&self, chunks: &BlobMetaChunkArray) -> Result<ZranBlobMeta> {
+        Self::compact_contexts(self.generator.get_compression_ctx_array(), chunks)
+    }
+
+    fn compact_contexts(
+        records: &[ZranContext],
+        chunks: &BlobMetaChunkArray,
+    ) -> Result<ZranBlobMeta> {
         let mut chunks = match chunks {
             BlobMetaChunkArray::V2(chunks) => chunks.to_vec(),
             BlobMetaChunkArray::V1(_) => return Err(einval!("ZRan requires a V2 chunk table")),
         };
-        let records = self.generator.get_compression_ctx_array();
         let mut referenced = vec![false; records.len()];
         for chunk in &chunks {
             // get_zran_index also rejects non-ZRan entries, before any indexes are remapped.
@@ -307,6 +313,168 @@ mod tests {
     use tar::{Archive, EntryType};
 
     const COMPACT_CHUNK_SIZE: usize = 64 * 1024;
+
+    type TestGenerator = ZranContextGenerator<Cursor<Vec<u8>>>;
+
+    fn synthetic_contexts() -> Vec<ZranContext> {
+        (0..4)
+            .map(|index| ZranContext {
+                in_offset: 1000 + index as u64 * 100,
+                out_offset: 4096 + index as u64 * 8192,
+                in_len: 100 + index as u32,
+                out_len: 4096 + index as u32 * 128,
+                ctx_byte: 0x40 + index as u8,
+                ctx_bits: index as u8,
+                dict: vec![0x10 + index as u8; [2, 3, 0, 4][index]],
+            })
+            .collect()
+    }
+
+    fn synthetic_chunks(indexes: &[u32]) -> BlobMetaChunkArray {
+        let chunks: Vec<_> = indexes
+            .iter()
+            .enumerate()
+            .map(|(position, index)| {
+                let mut chunk = BlobChunkInfoV2Ondisk::default();
+                chunk.set_compressed_offset(1024 + position as u64 * 256);
+                chunk.set_compressed_size(128 + position as u32);
+                chunk.set_uncompressed_offset(position as u64 * 4096);
+                chunk.set_uncompressed_size(256 + position as u32);
+                chunk.set_compressed(true);
+                chunk.set_zran(true);
+                chunk.set_zran_index(*index);
+                chunk.set_zran_offset(17 + position as u32);
+                chunk
+            })
+            .collect();
+        BlobMetaChunkArray::V2(chunks.into())
+    }
+
+    fn serialize_synthetic_contexts(records: &[ZranContext]) -> (Vec<u8>, u32) {
+        TestGenerator::serialize_contexts(&records.iter().collect::<Vec<_>>()).unwrap()
+    }
+
+    fn assert_compacted_layout(
+        records: &[ZranContext],
+        source: &BlobMetaChunkArray,
+        meta: &ZranBlobMeta,
+        retained: &[usize],
+        indexes: &[u32],
+    ) {
+        let mut expected = match source {
+            BlobMetaChunkArray::V2(chunks) => chunks.to_vec(),
+            _ => unreachable!(),
+        };
+        assert_eq!(expected.len(), indexes.len());
+        for (chunk, index) in expected.iter_mut().zip(indexes) {
+            chunk.set_zran_index(*index);
+        }
+        assert_eq!(
+            meta.chunks.as_byte_slice(),
+            BlobMetaChunkArray::V2(expected.into()).as_byte_slice()
+        );
+
+        assert_eq!(meta.inflate_count as usize, retained.len());
+        let table_size = retained.len() * size_of::<ZranInflateContext>();
+        let mut dictionary_offset = 0;
+        for (index, original_index) in retained.iter().enumerate() {
+            let original = &records[*original_index];
+            let offset = index * size_of::<ZranInflateContext>();
+            let bytes = &meta.inflate_data[offset..offset + size_of::<ZranInflateContext>()];
+            // The packed record contains only initialized integer fields.
+            let context =
+                unsafe { std::ptr::read_unaligned::<ZranInflateContext>(bytes.as_ptr().cast()) };
+            assert_eq!(context.in_offset(), original.in_offset);
+            assert_eq!(context.out_offset(), original.out_offset);
+            assert_eq!(context.in_size(), original.in_len);
+            assert_eq!(context.out_size(), original.out_len);
+            assert_eq!(context.ctx_byte(), original.ctx_byte);
+            assert_eq!(context.ctx_bits(), original.ctx_bits);
+            assert_eq!(context.dict_offset(), dictionary_offset as u64);
+            assert_eq!(context.dict_size() as usize, original.dict.len());
+            assert_eq!(context.__reserved1, 0);
+            assert_eq!(context.__reserved2, 0);
+            let start = table_size + dictionary_offset;
+            let end = start + original.dict.len();
+            assert_eq!(&meta.inflate_data[start..end], original.dict);
+            dictionary_offset += original.dict.len();
+        }
+        assert_eq!(meta.inflate_data.len(), table_size + dictionary_offset);
+    }
+
+    #[test]
+    fn test_compact_contexts_sparse_and_shared() {
+        let records = synthetic_contexts();
+        let source = synthetic_chunks(&[3, 0, 3]);
+        let source_before = source.as_byte_slice().to_vec();
+        let records_before = serialize_synthetic_contexts(&records);
+
+        let meta = TestGenerator::compact_contexts(&records, &source).unwrap();
+        assert_compacted_layout(&records, &source, &meta, &[0, 3], &[1, 0, 1]);
+        assert_eq!(source.as_byte_slice(), source_before);
+        assert_eq!(serialize_synthetic_contexts(&records), records_before);
+    }
+
+    #[test]
+    fn test_compact_contexts_without_unused_records() {
+        let records = synthetic_contexts();
+        let indexes = [0, 0, 1, 1, 2, 2, 3, 3];
+        let source = synthetic_chunks(&indexes);
+        let (legacy, count) = serialize_synthetic_contexts(&records);
+
+        let meta = TestGenerator::compact_contexts(&records, &source).unwrap();
+        assert_eq!(meta.inflate_count, count);
+        assert_eq!(meta.inflate_data, legacy);
+        assert_eq!(meta.chunks.as_byte_slice(), source.as_byte_slice());
+        assert_compacted_layout(&records, &source, &meta, &[0, 1, 2, 3], &indexes);
+    }
+
+    #[test]
+    fn test_compact_contexts_independent_subsets() {
+        let records = synthetic_contexts();
+        let original = serialize_synthetic_contexts(&records);
+        let first = synthetic_chunks(&[3]);
+        let second = synthetic_chunks(&[1, 2]);
+        let first_before = first.as_byte_slice().to_vec();
+        let second_before = second.as_byte_slice().to_vec();
+
+        let first_meta = TestGenerator::compact_contexts(&records, &first).unwrap();
+        let second_meta = TestGenerator::compact_contexts(&records, &second).unwrap();
+        let repeated = TestGenerator::compact_contexts(&records, &first).unwrap();
+        assert_compacted_layout(&records, &first, &first_meta, &[3], &[0]);
+        assert_compacted_layout(&records, &second, &second_meta, &[1, 2], &[0, 1]);
+        assert_eq!(first_meta.inflate_data, repeated.inflate_data);
+        assert_eq!(
+            first_meta.chunks.as_byte_slice(),
+            repeated.chunks.as_byte_slice()
+        );
+        assert_eq!(first.as_byte_slice(), first_before);
+        assert_eq!(second.as_byte_slice(), second_before);
+        assert_eq!(serialize_synthetic_contexts(&records), original);
+    }
+
+    #[test]
+    fn test_compact_contexts_invalid_and_empty_chunks() {
+        let records = synthetic_contexts();
+        assert!(TestGenerator::compact_contexts(&records, &BlobMetaChunkArray::new_v1()).is_err());
+        let mut non_zran = BlobChunkInfoV2Ondisk::default();
+        non_zran.set_zran(false);
+        let non_zran = BlobMetaChunkArray::V2(vec![non_zran].into());
+        assert!(TestGenerator::compact_contexts(&records, &non_zran).is_err());
+        for index in [records.len() as u32, u32::MAX] {
+            assert!(
+                TestGenerator::compact_contexts(&records, &synthetic_chunks(&[index])).is_err()
+            );
+        }
+        assert!(TestGenerator::compact_contexts(&[], &synthetic_chunks(&[0])).is_err());
+        for records in [records.as_slice(), &[]] {
+            let meta =
+                TestGenerator::compact_contexts(records, &BlobMetaChunkArray::new_v2()).unwrap();
+            assert!(meta.chunks.is_empty());
+            assert_eq!(meta.inflate_count, 0);
+            assert!(meta.inflate_data.is_empty());
+        }
+    }
 
     struct CompactFixture {
         generator: ZranContextGenerator<Cursor<Vec<u8>>>,
@@ -457,6 +625,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "requires libz FFI for gzip generation and decoding")]
     fn test_zran_to_blob_meta_sparse_and_shared_contexts() {
         let fixture = compact_fixture();
         // Reference context 3 before context 0 to ensure serialization follows the
@@ -476,6 +645,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "requires libz FFI for gzip generation and decoding")]
     fn test_zran_to_blob_meta_without_unused_contexts() {
         let fixture = compact_fixture();
         let source = fixture.select_chunks(&[0, 1, 2, 3, 4, 5, 6, 7]);
@@ -488,6 +658,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "requires libz FFI for gzip generation and decoding")]
     fn test_zran_to_blob_meta_independent_subsets() {
         let fixture = compact_fixture();
         let original = fixture.generator.to_vec().unwrap();
@@ -509,6 +680,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "requires libz FFI for gzip generation and decoding")]
     fn test_zran_to_blob_meta_invalid_and_empty_chunks() {
         let fixture = compact_fixture();
         assert!(fixture
@@ -630,6 +802,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "requires libz FFI to read the gzip fixture")]
     fn test_generate_chunk_info() {
         let root_dir = &std::env::var("CARGO_MANIFEST_DIR").expect("$CARGO_MANIFEST_DIR");
         let path = PathBuf::from(root_dir).join("../tests/texture/zran/zran-two-streams.tar.gz");
@@ -667,6 +840,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "requires libz FFI to read the gzip fixture")]
     fn test_zran_context_generator_to_vec() {
         let root_dir = &std::env::var("CARGO_MANIFEST_DIR").expect("$CARGO_MANIFEST_DIR");
         let path = PathBuf::from(root_dir).join("../tests/texture/zran/zran-two-streams.tar.gz");

@@ -80,8 +80,11 @@ impl RateLimiter {
     /// Consume `bytes` tokens. Returns `Some(duration)` if the caller should
     /// sleep to stay within the rate limit, `None` if no wait is needed.
     fn consume(&mut self, bytes: usize) -> Option<Duration> {
+        self.consume_at(bytes, Instant::now())
+    }
+
+    fn consume_at(&mut self, bytes: usize, now: Instant) -> Option<Duration> {
         let bytes = bytes as u64;
-        let now = Instant::now();
         let elapsed = now.duration_since(self.last_refill);
         let tokens_to_add = (elapsed.as_secs_f64() * self.rate as f64) as u64;
         if tokens_to_add > 0 {
@@ -802,19 +805,20 @@ mod tests {
     #[test]
     fn test_rate_limiter_returns_wait_when_exhausted() {
         let mut limiter = RateLimiter::new(1024); // 1 KB/s, capacity = 2 KB
-        assert!(limiter.consume(2048).is_none());
-        let wait = limiter.consume(1024);
-        assert!(wait.is_some());
-        assert!(wait.unwrap() > Duration::from_millis(500));
+        let now = limiter.last_refill;
+        assert!(limiter.consume_at(2048, now).is_none());
+        assert_eq!(limiter.consume_at(1024, now), Some(Duration::from_secs(1)));
     }
 
     #[test]
     fn test_rate_limiter_refills_over_time() {
         let mut limiter = RateLimiter::new(10_000); // 10 KB/s, capacity = 20 KB
-        assert!(limiter.consume(20_000).is_none());
-        std::thread::sleep(Duration::from_millis(200));
-        // Should have refilled ~2 KB worth of tokens; just verify it doesn't panic.
-        let _result = limiter.consume(1000);
+        let now = limiter.last_refill;
+        assert!(limiter.consume_at(20_000, now).is_none());
+        assert!(limiter
+            .consume_at(1000, now + Duration::from_millis(200))
+            .is_none());
+        assert_eq!(limiter.available_tokens, 1000);
     }
 
     #[test]
@@ -829,9 +833,10 @@ mod tests {
     #[test]
     fn test_rate_limiter_exact_capacity_no_wait() {
         let mut limiter = RateLimiter::new(1024); // capacity = 2048
-        assert!(limiter.consume(2048).is_none());
+        let now = limiter.last_refill;
+        assert!(limiter.consume_at(2048, now).is_none());
         // Now exhausted: next byte requires a wait.
-        assert!(limiter.consume(1).is_some());
+        assert!(limiter.consume_at(1, now).is_some());
     }
 
     #[test]
@@ -846,18 +851,11 @@ mod tests {
     fn test_rate_limiter_wait_duration_accuracy() {
         let rate = 1000u64; // 1000 bytes/s
         let mut limiter = RateLimiter::new(rate);
-        limiter.consume(2000); // drain capacity (2 × 1000)
-                               // Requesting 500 more bytes should require ~500 ms wait.
-        let wait = limiter.consume(500).expect("should wait");
-        assert!(
-            wait >= Duration::from_millis(400),
-            "wait too short: {:?}",
-            wait
-        );
-        assert!(
-            wait <= Duration::from_millis(600),
-            "wait too long: {:?}",
-            wait
+        let now = limiter.last_refill;
+        limiter.consume_at(2000, now); // drain capacity (2 × 1000)
+        assert_eq!(
+            limiter.consume_at(500, now),
+            Some(Duration::from_millis(500))
         );
     }
 

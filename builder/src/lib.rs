@@ -375,9 +375,25 @@ impl TarBuilder {
 
 #[cfg(test)]
 mod tests {
-    use vmm_sys_util::tempdir::TempDir;
+    use tempfile::TempDir;
 
     use super::*;
+
+    // Prepare inputs for pure tree/layout tests without native xattr queries.
+    pub(crate) fn memory_node(path: &str, file_type: libc::mode_t) -> Node {
+        let path = PathBuf::from(path);
+        let mut inode = nydus_rafs::metadata::inode::InodeWrapper::new(RafsVersion::V6);
+        inode.set_mode(mode_bits(file_type) | 0o755);
+        inode.set_nlink(1);
+        let info = crate::core::node::NodeInfo {
+            source: PathBuf::from("/"),
+            path: path.clone(),
+            target: path.clone(),
+            target_vec: Node::generate_target_vec(&path),
+            ..Default::default()
+        };
+        Node::new(inode, info, 0)
+    }
 
     #[test]
     fn test_tar_builder_insert_into_tree_implicit_directories() {
@@ -462,7 +478,7 @@ mod tests {
     #[test]
     fn test_tar_builder_create_directory() {
         let tmp_dir = TempDir::new().unwrap();
-        let target_paths = [OsString::from(tmp_dir.as_path())];
+        let target_paths = [OsString::from(tmp_dir.path())];
         let mut builder = TarBuilder::new(true, 0, RafsVersion::V6);
 
         let node = builder.create_directory(&target_paths);
@@ -470,7 +486,7 @@ mod tests {
         let node = node.unwrap();
         println!("Node: {}", node);
         assert_eq!(node.file_type(), "dir");
-        assert_eq!(node.target(), tmp_dir.as_path());
+        assert_eq!(node.target(), tmp_dir.path());
 
         assert_eq!(builder.next_ino, 1);
         assert_eq!(builder.next_ino(), 2);

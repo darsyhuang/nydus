@@ -45,6 +45,7 @@ vm-memory = { workspace = true, features = ["backend-mmap"], optional = true }
 tokio-uring = "0.4"
 
 [dev-dependencies]
+tempfile = { workspace = true }
 vmm-sys-util = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dev-dependencies]

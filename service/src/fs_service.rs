@@ -538,6 +538,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "requires file-backed bootstrap mappings and readahead")]
     fn it_should_create_rafs_backend() {
         let config = r#"
         {

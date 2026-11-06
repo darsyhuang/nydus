@@ -1279,7 +1279,7 @@ mod tests {
     use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
     use std::path::PathBuf;
     use std::time::Duration;
-    use vmm_sys_util::tempdir::TempDir;
+    use tempfile::TempDir;
 
     #[tokio::test]
     async fn uffdio_copy_rejects_a_short_source_buffer() {
@@ -1432,10 +1432,11 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "requires file-backed bootstrap mappings and readahead")]
     fn test_uffd_daemon_lifecycle() {
         let tmpdir = TempDir::new().unwrap();
-        let device = create_block_device(tmpdir.as_path().to_path_buf()).unwrap();
-        let sock_path = format!("{}/test_daemon.sock", tmpdir.as_path().display());
+        let device = create_block_device(tmpdir.path().to_path_buf()).unwrap();
+        let sock_path = format!("{}/test_daemon.sock", tmpdir.path().display());
         let service = Arc::new(UffdService::new(device, sock_path.clone()).unwrap());
 
         let (trigger, events_rx) = std::sync::mpsc::channel::<DaemonStateMachineInput>();
@@ -1494,8 +1495,8 @@ mod tests {
 
         // Also test create_uffd_daemon convenience function
         let tmpdir2 = TempDir::new().unwrap();
-        let entry = create_test_blob_entry(tmpdir2.as_path().to_path_buf());
-        let sock_path2 = format!("{}/test_daemon2.sock", tmpdir2.as_path().display());
+        let entry = create_test_blob_entry(tmpdir2.path().to_path_buf());
+        let sock_path2 = format!("{}/test_daemon2.sock", tmpdir2.path().display());
         let poll2 = mio::Poll::new().unwrap();
         let waker2 = Arc::new(Waker::new(poll2.registry(), mio::Token(0)).unwrap());
 
@@ -1523,10 +1524,11 @@ mod tests {
     // --- UffdService basic tests ---
 
     #[test]
+    #[cfg_attr(miri, ignore = "requires file-backed bootstrap mappings and readahead")]
     fn test_uffd_service_stop_flag() {
         let tmpdir = TempDir::new().unwrap();
-        let device = create_block_device(tmpdir.as_path().to_path_buf()).unwrap();
-        let sock_path = format!("{}/test.sock", tmpdir.as_path().display());
+        let device = create_block_device(tmpdir.path().to_path_buf()).unwrap();
+        let sock_path = format!("{}/test.sock", tmpdir.path().display());
         let service = UffdService::new(device, sock_path).unwrap();
 
         assert!(service.active.load(Ordering::Acquire));
@@ -1535,10 +1537,11 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "requires file-backed bootstrap mappings and readahead")]
     fn test_uffd_service_save_restore() {
         let tmpdir = TempDir::new().unwrap();
-        let device = create_block_device(tmpdir.as_path().to_path_buf()).unwrap();
-        let sock_path = format!("{}/test.sock", tmpdir.as_path().display());
+        let device = create_block_device(tmpdir.path().to_path_buf()).unwrap();
+        let sock_path = format!("{}/test.sock", tmpdir.path().display());
         let service = UffdService::new(device, sock_path).unwrap();
 
         // save and restore are no-ops for stateless service
@@ -1547,10 +1550,11 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "requires file-backed bootstrap mappings and readahead")]
     fn test_uffd_service_get_blob_cache_mgr() {
         let tmpdir = TempDir::new().unwrap();
-        let device = create_block_device(tmpdir.as_path().to_path_buf()).unwrap();
-        let sock_path = format!("{}/test.sock", tmpdir.as_path().display());
+        let device = create_block_device(tmpdir.path().to_path_buf()).unwrap();
+        let sock_path = format!("{}/test.sock", tmpdir.path().display());
         let service = UffdService::new(device, sock_path).unwrap();
 
         assert!(service.get_blob_cache_mgr().is_some());
@@ -1573,6 +1577,7 @@ mod tests {
     // --- try_recv_from_sock tests ---
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support sendmsg/recvmsg")]
     fn test_try_recv_from_sock_eof() {
         // Create a pair of unix stream sockets, close the sender side
         let (sock1, sock2) = std::os::unix::net::UnixStream::pair().unwrap();
@@ -1585,6 +1590,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support sendmsg/recvmsg")]
     fn test_try_recv_from_sock_would_block() {
         // Create a pair and set non-blocking, read without writing -> WouldBlock -> Ok(None)
         let (sock1, _sock2) = std::os::unix::net::UnixStream::pair().unwrap();
@@ -1596,6 +1602,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support sendmsg/recvmsg")]
     fn test_try_recv_from_sock_valid_handshake() {
         let (sock1, sock2) = std::os::unix::net::UnixStream::pair().unwrap();
 
@@ -1618,6 +1625,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support sendmsg/recvmsg")]
     fn test_try_recv_from_sock_stat_request() {
         let (sock1, sock2) = std::os::unix::net::UnixStream::pair().unwrap();
 
@@ -1632,6 +1640,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support sendmsg/recvmsg")]
     fn test_try_recv_from_sock_invalid_utf8() {
         let (sock1, sock2) = std::os::unix::net::UnixStream::pair().unwrap();
 
@@ -1644,6 +1653,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support sendmsg/recvmsg")]
     fn test_try_recv_from_sock_invalid_json() {
         let (sock1, sock2) = std::os::unix::net::UnixStream::pair().unwrap();
 
@@ -1658,6 +1668,7 @@ mod tests {
     // --- handle_handshake Firecracker compatibility test ---
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support sendmsg/recvmsg")]
     fn test_handle_handshake_firecracker_format() {
         let (sock1, sock2) = std::os::unix::net::UnixStream::pair().unwrap();
 
@@ -1699,10 +1710,11 @@ mod tests {
     // --- do_prefault test ---
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support io_uring syscalls")]
     fn test_do_prefault() {
         tokio_uring::start(async {
             let tmpdir = TempDir::new().unwrap();
-            let device = create_block_device(tmpdir.as_path().to_path_buf()).unwrap();
+            let device = create_block_device(tmpdir.path().to_path_buf()).unwrap();
             let (sock1, sock2) = std::os::unix::net::UnixStream::pair().unwrap();
             sock2.set_nonblocking(true).unwrap();
 
@@ -1746,6 +1758,7 @@ mod tests {
     // --- send_batch_response test ---
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support io_uring syscalls")]
     fn test_send_batch_response() {
         tokio_uring::start(async {
             let (sock1, sock2) = std::os::unix::net::UnixStream::pair().unwrap();
@@ -1782,6 +1795,7 @@ mod tests {
     // --- dispatch_message tests ---
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support io_uring syscalls")]
     fn test_dispatch_message_stat() {
         tokio_uring::start(async {
             let (sock1, sock2) = std::os::unix::net::UnixStream::pair().unwrap();
@@ -1791,7 +1805,7 @@ mod tests {
             let sock_async = unsafe { AsyncFd::register(sock1) }.unwrap();
 
             let tmpdir = TempDir::new().unwrap();
-            let device = create_block_device(tmpdir.as_path().to_path_buf()).unwrap();
+            let device = create_block_device(tmpdir.path().to_path_buf()).unwrap();
             let core = UffdCore::new(device);
             let mut conn_state: Option<ConnState> = None;
 
@@ -1813,6 +1827,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support io_uring syscalls")]
     fn test_dispatch_message_unexpected_type() {
         tokio_uring::start(async {
             let (sock1, _sock2) = std::os::unix::net::UnixStream::pair().unwrap();
@@ -1822,7 +1837,7 @@ mod tests {
             let sock_async = unsafe { AsyncFd::register(sock1) }.unwrap();
 
             let tmpdir = TempDir::new().unwrap();
-            let device = create_block_device(tmpdir.as_path().to_path_buf()).unwrap();
+            let device = create_block_device(tmpdir.path().to_path_buf()).unwrap();
             let core = UffdCore::new(device);
             let mut conn_state: Option<ConnState> = None;
 
@@ -1843,6 +1858,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support io_uring syscalls")]
     fn test_dispatch_message_handshake_already_handshaked() {
         tokio_uring::start(async {
             let (sock1, _sock2) = std::os::unix::net::UnixStream::pair().unwrap();
@@ -1852,7 +1868,7 @@ mod tests {
             let sock_async = unsafe { AsyncFd::register(sock1) }.unwrap();
 
             let tmpdir = TempDir::new().unwrap();
-            let device = create_block_device(tmpdir.as_path().to_path_buf()).unwrap();
+            let device = create_block_device(tmpdir.path().to_path_buf()).unwrap();
             let core = UffdCore::new(device);
 
             // Pre-set conn_state to simulate already handshaked
@@ -1896,6 +1912,7 @@ mod tests {
     // --- handle_stat_request test ---
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support io_uring syscalls")]
     fn test_handle_stat_request() {
         tokio_uring::start(async {
             let (sock1, sock2) = std::os::unix::net::UnixStream::pair().unwrap();
@@ -1927,10 +1944,11 @@ mod tests {
     // --- handle_handshake with real uffd fd ---
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support io_uring syscalls")]
     fn test_handle_handshake_with_uffd_fd() {
         tokio_uring::start(async {
             let tmpdir = TempDir::new().unwrap();
-            let device = create_block_device(tmpdir.as_path().to_path_buf()).unwrap();
+            let device = create_block_device(tmpdir.path().to_path_buf()).unwrap();
             let core = UffdCore::new(device);
 
             let (sock1, _sock2) = std::os::unix::net::UnixStream::pair().unwrap();
@@ -1958,10 +1976,11 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support io_uring syscalls")]
     fn test_handle_handshake_no_uffd_fd() {
         tokio_uring::start(async {
             let tmpdir = TempDir::new().unwrap();
-            let device = create_block_device(tmpdir.as_path().to_path_buf()).unwrap();
+            let device = create_block_device(tmpdir.path().to_path_buf()).unwrap();
             let core = UffdCore::new(device);
 
             let (sock1, _sock2) = std::os::unix::net::UnixStream::pair().unwrap();
@@ -1985,10 +2004,11 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support io_uring syscalls")]
     fn test_handle_handshake_copy_policy() {
         tokio_uring::start(async {
             let tmpdir = TempDir::new().unwrap();
-            let device = create_block_device(tmpdir.as_path().to_path_buf()).unwrap();
+            let device = create_block_device(tmpdir.path().to_path_buf()).unwrap();
             let core = UffdCore::new(device);
 
             let (sock1, _sock2) = std::os::unix::net::UnixStream::pair().unwrap();
@@ -2017,10 +2037,11 @@ mod tests {
     // --- UffdService create_worker test ---
 
     #[test]
+    #[cfg_attr(miri, ignore = "requires file-backed bootstrap mappings and readahead")]
     fn test_uffd_service_create_worker() {
         let tmpdir = TempDir::new().unwrap();
-        let device = create_block_device(tmpdir.as_path().to_path_buf()).unwrap();
-        let sock_path = format!("{}/test_worker.sock", tmpdir.as_path().display());
+        let device = create_block_device(tmpdir.path().to_path_buf()).unwrap();
+        let sock_path = format!("{}/test_worker.sock", tmpdir.path().display());
         let service = UffdService::new(device, sock_path).unwrap();
         let service = Arc::new(service);
 
@@ -2038,6 +2059,7 @@ mod tests {
     // --- async_send_with_fd test ---
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support io_uring syscalls")]
     fn test_async_send_with_fd() {
         tokio_uring::start(async {
             let (sock1, sock2) = std::os::unix::net::UnixStream::pair().unwrap();
@@ -2065,10 +2087,11 @@ mod tests {
     // --- stop() shutdown socket test ---
 
     #[test]
+    #[cfg_attr(miri, ignore = "requires file-backed bootstrap mappings and readahead")]
     fn test_service_stop_shutdown_sockets() {
         let tmpdir = TempDir::new().unwrap();
-        let device = create_block_device(tmpdir.as_path().to_path_buf()).unwrap();
-        let sock_path = format!("{}/test_stop.sock", tmpdir.as_path().display());
+        let device = create_block_device(tmpdir.path().to_path_buf()).unwrap();
+        let sock_path = format!("{}/test_stop.sock", tmpdir.path().display());
 
         let service = Arc::new(UffdService::new(device, sock_path.clone()).unwrap());
 
@@ -2119,10 +2142,11 @@ mod tests {
     // --- handle_conn graceful shutdown test ---
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support io_uring syscalls")]
     fn test_handle_conn_graceful_shutdown() {
         tokio_uring::start(async {
             let tmpdir = TempDir::new().unwrap();
-            let device = create_block_device(tmpdir.as_path().to_path_buf()).unwrap();
+            let device = create_block_device(tmpdir.path().to_path_buf()).unwrap();
 
             let (client_sock, server_sock) = std::os::unix::net::UnixStream::pair().unwrap();
             client_sock.set_nonblocking(true).unwrap();
@@ -2187,10 +2211,11 @@ mod tests {
     // --- handle_uffd_event test ---
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support io_uring syscalls")]
     fn test_handle_uffd_event_no_event() {
         tokio_uring::start(async {
             let tmpdir = TempDir::new().unwrap();
-            let device = create_block_device(tmpdir.as_path().to_path_buf()).unwrap();
+            let device = create_block_device(tmpdir.path().to_path_buf()).unwrap();
             let core = UffdCore::new(device);
 
             // Create sockets for communication
@@ -2294,9 +2319,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "requires file-backed bootstrap mappings and readahead")]
     fn test_uffd_core_new_and_device() {
         let tmpdir = TempDir::new().unwrap();
-        let device = create_block_device(tmpdir.as_path().to_path_buf()).unwrap();
+        let device = create_block_device(tmpdir.path().to_path_buf()).unwrap();
         let device_size = device.blocks_to_size(device.blocks());
         let block_size = device.block_size();
 
@@ -2307,9 +2333,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support io_uring syscalls")]
     fn test_handle_page_fault_not_pagefault_event() {
         let tmpdir = TempDir::new().unwrap();
-        let device = create_block_device(tmpdir.as_path().to_path_buf()).unwrap();
+        let device = create_block_device(tmpdir.path().to_path_buf()).unwrap();
         let core = UffdCore::new(device);
         let vma_regions = vec![VmaRegion::new(0x1000, 0x2000, 0, 4096)];
 
@@ -2334,9 +2361,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support io_uring syscalls")]
     fn test_handle_page_fault_addr_not_in_vma() {
         let tmpdir = TempDir::new().unwrap();
-        let device = create_block_device(tmpdir.as_path().to_path_buf()).unwrap();
+        let device = create_block_device(tmpdir.path().to_path_buf()).unwrap();
         let core = UffdCore::new(device);
         let vma_regions = vec![VmaRegion::new(0x1000, 0x2000, 0, 4096)];
 
@@ -2361,9 +2389,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support userfaultfd syscalls")]
     fn test_handle_page_fault_copy_mode() {
         let tmpdir = TempDir::new().unwrap();
-        let device = create_block_device(tmpdir.as_path().to_path_buf()).unwrap();
+        let device = create_block_device(tmpdir.path().to_path_buf()).unwrap();
         let device_size = device.blocks_to_size(device.blocks()) as usize;
         let core = UffdCore::new(device);
 
@@ -2402,9 +2431,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support userfaultfd syscalls")]
     fn test_handle_page_fault_zerocopy_mode() {
         let tmpdir = TempDir::new().unwrap();
-        let device = create_block_device(tmpdir.as_path().to_path_buf()).unwrap();
+        let device = create_block_device(tmpdir.path().to_path_buf()).unwrap();
         let device_size = device.blocks_to_size(device.blocks()) as usize;
         let core = UffdCore::new(device);
 
@@ -2439,9 +2469,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support userfaultfd syscalls")]
     fn test_resolve_copy() {
         let tmpdir = TempDir::new().unwrap();
-        let device = create_block_device(tmpdir.as_path().to_path_buf()).unwrap();
+        let device = create_block_device(tmpdir.path().to_path_buf()).unwrap();
         let device_size = device.blocks_to_size(device.blocks()) as usize;
         let core = UffdCore::new(device);
 
@@ -2463,9 +2494,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support userfaultfd syscalls")]
     fn test_resolve_zerocopy_ranges() {
         let tmpdir = TempDir::new().unwrap();
-        let device = create_block_device(tmpdir.as_path().to_path_buf()).unwrap();
+        let device = create_block_device(tmpdir.path().to_path_buf()).unwrap();
         let device_size = device.blocks_to_size(device.blocks()) as usize;
         let core = UffdCore::new(device);
 
@@ -2484,9 +2516,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support io_uring syscalls")]
     fn test_prefault_ranges() {
         let tmpdir = TempDir::new().unwrap();
-        let device = create_block_device(tmpdir.as_path().to_path_buf()).unwrap();
+        let device = create_block_device(tmpdir.path().to_path_buf()).unwrap();
         let device_size = device.blocks_to_size(device.blocks()) as usize;
         let core = UffdCore::new(device);
 
@@ -2498,9 +2531,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support userfaultfd syscalls")]
     fn test_handle_page_fault_beyond_device_zerocopy() {
         let tmpdir = TempDir::new().unwrap();
-        let device = create_block_device(tmpdir.as_path().to_path_buf()).unwrap();
+        let device = create_block_device(tmpdir.path().to_path_buf()).unwrap();
         let device_size = device.blocks_to_size(device.blocks());
 
         let vma_size = device_size as usize + 0x200000;
@@ -2541,9 +2575,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support userfaultfd syscalls")]
     fn test_handle_page_fault_beyond_device_copy() {
         let tmpdir = TempDir::new().unwrap();
-        let device = create_block_device(tmpdir.as_path().to_path_buf()).unwrap();
+        let device = create_block_device(tmpdir.path().to_path_buf()).unwrap();
         let device_size = device.blocks_to_size(device.blocks());
 
         let vma_size = device_size as usize + 0x200000;
@@ -2576,6 +2611,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support io_uring syscalls")]
     fn test_uffdio_wake() {
         tokio_uring::start(async {
             let (uffd_fd, addr, mmap_size) = setup_uffd_region(4096).unwrap();
@@ -2606,6 +2642,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri does not support io_uring syscalls")]
     fn test_uffdio_wake_invalid_fd() {
         tokio_uring::start(async {
             let result = uffdio_wake(-1, 0x1000, 4096).await;

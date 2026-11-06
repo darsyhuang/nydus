@@ -543,7 +543,7 @@ mod tests {
     use nydus_api::BlobCacheEntry;
     use std::path::PathBuf;
     use std::time::Duration;
-    use vmm_sys_util::tempdir::TempDir;
+    use tempfile::TempDir;
 
     #[allow(clippy::arc_with_non_send_sync)]
     fn create_block_device(tmpdir: PathBuf) -> Result<Arc<BlockDevice>> {
@@ -608,7 +608,7 @@ mod tests {
     fn test_nbd_device() {
         tokio_uring::start(async {
             let tmpdir = TempDir::new().unwrap();
-            let device = create_block_device(tmpdir.as_path().to_path_buf()).unwrap();
+            let device = create_block_device(tmpdir.path().to_path_buf()).unwrap();
             let nbd = NbdService::new(device, "/dev/nbd15".to_string(), 60).unwrap();
             let nbd = Arc::new(nbd);
             let nbd2 = nbd.clone();

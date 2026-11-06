@@ -407,14 +407,14 @@ impl FileCacheEntry {
 #[cfg(test)]
 pub mod blob_cache_tests {
     use nydus_api::FileCacheConfig;
-    use vmm_sys_util::tempdir::TempDir;
+    use tempfile::TempDir;
     use vmm_sys_util::tempfile::TempFile;
 
     #[test]
     fn test_blob_cache_config() {
         // new blob cache
         let tmp_dir = TempDir::new().unwrap();
-        let dir = tmp_dir.as_path().to_path_buf();
+        let dir = tmp_dir.path().to_path_buf();
         let s = format!(
             r###"
         {{
@@ -445,7 +445,7 @@ pub mod blob_cache_tests {
                "work_dir": {:?}
            }}
            "###,
-               tmp_dir.as_path().to_path_buf().join("cache"),
+               tmp_dir.path().to_path_buf().join("cache"),
            );
 
            let cache_config = CacheConfig {
@@ -529,7 +529,7 @@ pub mod blob_cache_tests {
                "work_dir": {:?}
            }}
            "###,
-               tmp_dir.as_path().to_path_buf().join("cache"),
+               tmp_dir.path().to_path_buf().join("cache"),
            );
 
            let cache_config = CacheConfig {

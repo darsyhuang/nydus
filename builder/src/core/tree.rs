@@ -417,7 +417,7 @@ mod tests {
     use super::*;
     use nydus_rafs::metadata::RafsVersion;
     use nydus_storage::RAFS_DEFAULT_CHUNK_SIZE;
-    use vmm_sys_util::tempdir::TempDir;
+    use tempfile::TempDir;
     use vmm_sys_util::tempfile::TempFile;
 
     #[test]
@@ -450,12 +450,16 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri does not support native extended attribute operations"
+    )]
     fn test_set_lock_node() {
         let tmpdir = TempDir::new().unwrap();
-        let tmpfile = TempFile::new_in(tmpdir.as_path()).unwrap();
+        let tmpfile = TempFile::new_in(tmpdir.path()).unwrap();
         let node = Node::from_fs_object(
             RafsVersion::V6,
-            tmpdir.as_path().to_path_buf(),
+            tmpdir.path().to_path_buf(),
             tmpfile.as_path().to_path_buf(),
             Overlay::UpperAddition,
             RAFS_DEFAULT_CHUNK_SIZE as u32,
@@ -464,15 +468,11 @@ mod tests {
             false,
         )
         .unwrap();
-        let mut tree = Tree::new(node);
-        assert_eq!(tree.name, tmpfile.as_path().file_name().unwrap().as_bytes());
-        let node1 = tree.borrow_mut_node();
-        drop(node1);
-
-        let tmpfile = TempFile::new_in(tmpdir.as_path()).unwrap();
-        let node = Node::from_fs_object(
+        assert_eq!(node.name(), tmpfile.as_path().file_name().unwrap());
+        let tmpfile = TempFile::new_in(tmpdir.path()).unwrap();
+        let replacement = Node::from_fs_object(
             RafsVersion::V6,
-            tmpdir.as_path().to_path_buf(),
+            tmpdir.path().to_path_buf(),
             tmpfile.as_path().to_path_buf(),
             Overlay::UpperAddition,
             RAFS_DEFAULT_CHUNK_SIZE as u32,
@@ -481,18 +481,42 @@ mod tests {
             false,
         )
         .unwrap();
-        tree.set_node(node);
-        let node2 = tree.borrow_mut_node();
-        assert_eq!(node2.name(), tmpfile.as_path().file_name().unwrap());
+        assert_eq!(replacement.name(), tmpfile.as_path().file_name().unwrap());
+        check_set_lock_node(node, replacement);
     }
 
     #[test]
+    fn test_set_lock_node_in_memory() {
+        check_set_lock_node(
+            crate::tests::memory_node("/first", libc::S_IFREG),
+            crate::tests::memory_node("/second", libc::S_IFREG),
+        );
+    }
+
+    fn check_set_lock_node(node: Node, replacement: Node) {
+        let name = node.name().to_owned();
+        let replacement_name = replacement.name().to_owned();
+        let mut tree = Tree::new(node);
+        assert_eq!(tree.name, name.as_bytes());
+        let node1 = tree.borrow_mut_node();
+        drop(node1);
+
+        tree.set_node(replacement);
+        let node2 = tree.borrow_mut_node();
+        assert_eq!(node2.name(), replacement_name);
+    }
+
+    #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri does not support native extended attribute operations"
+    )]
     fn test_walk_tree() {
         let tmpdir = TempDir::new().unwrap();
-        let tmpfile = TempFile::new_in(tmpdir.as_path()).unwrap();
+        let tmpfile = TempFile::new_in(tmpdir.path()).unwrap();
         let node = Node::from_fs_object(
             RafsVersion::V6,
-            tmpdir.as_path().to_path_buf(),
+            tmpdir.path().to_path_buf(),
             tmpfile.as_path().to_path_buf(),
             Overlay::UpperAddition,
             RAFS_DEFAULT_CHUNK_SIZE as u32,
@@ -501,12 +525,10 @@ mod tests {
             false,
         )
         .unwrap();
-        let mut tree = Tree::new(node);
-
-        let tmpfile2 = TempFile::new_in(tmpdir.as_path()).unwrap();
-        let node = Node::from_fs_object(
+        let tmpfile2 = TempFile::new_in(tmpdir.path()).unwrap();
+        let child1 = Node::from_fs_object(
             RafsVersion::V6,
-            tmpdir.as_path().to_path_buf(),
+            tmpdir.path().to_path_buf(),
             tmpfile2.as_path().to_path_buf(),
             Overlay::UpperAddition,
             RAFS_DEFAULT_CHUNK_SIZE as u32,
@@ -515,13 +537,11 @@ mod tests {
             false,
         )
         .unwrap();
-        let tree2 = Tree::new(node);
-        tree.insert_child(tree2);
-
-        let tmpfile3 = TempFile::new_in(tmpdir.as_path()).unwrap();
-        let node = Node::from_fs_object(
+        assert_eq!(child1.name(), tmpfile2.as_path().file_name().unwrap());
+        let tmpfile3 = TempFile::new_in(tmpdir.path()).unwrap();
+        let child2 = Node::from_fs_object(
             RafsVersion::V6,
-            tmpdir.as_path().to_path_buf(),
+            tmpdir.path().to_path_buf(),
             tmpfile3.as_path().to_path_buf(),
             Overlay::UpperAddition,
             RAFS_DEFAULT_CHUNK_SIZE as u32,
@@ -530,8 +550,25 @@ mod tests {
             false,
         )
         .unwrap();
-        let tree3 = Tree::new(node);
-        tree.insert_child(tree3);
+        assert_eq!(child2.name(), tmpfile3.as_path().file_name().unwrap());
+        check_walk_tree(node, child1, child2);
+    }
+
+    #[test]
+    fn test_walk_tree_in_memory() {
+        check_walk_tree(
+            crate::tests::memory_node("/root", libc::S_IFREG),
+            crate::tests::memory_node("/root/first", libc::S_IFREG),
+            crate::tests::memory_node("/root/second", libc::S_IFREG),
+        );
+    }
+
+    fn check_walk_tree(node: Node, child1: Node, child2: Node) {
+        let child1_name = child1.name().to_owned();
+        let child2_name = child2.name().to_owned();
+        let mut tree = Tree::new(node);
+        tree.insert_child(Tree::new(child1));
+        tree.insert_child(Tree::new(child2));
 
         let mut count = 0;
         tree.walk_bfs(true, &mut |_n| -> Result<()> {
@@ -557,13 +594,9 @@ mod tests {
         .unwrap_err();
         assert_eq!(count, 1);
 
-        let idx = tree
-            .get_child_idx(tmpfile2.as_path().file_name().unwrap().as_bytes())
-            .unwrap();
+        let idx = tree.get_child_idx(child1_name.as_bytes()).unwrap();
         assert!(idx == 0 || idx == 1);
-        let idx = tree
-            .get_child_idx(tmpfile3.as_path().file_name().unwrap().as_bytes())
-            .unwrap();
+        let idx = tree.get_child_idx(child2_name.as_bytes()).unwrap();
         assert!(idx == 0 || idx == 1);
     }
 }
