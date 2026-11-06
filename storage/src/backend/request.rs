@@ -98,11 +98,12 @@ impl Response {
             #[cfg(feature = "backend-dragonfly-proxy")]
             Self::ProxySDK(resp) => {
                 let mut reader = proxy::body_reader(resp.body);
-                proxy::runtime()
-                    .block_on(async {
+                proxy::with_runtime(|runtime| {
+                    runtime.block_on(async {
                         tokio::io::copy(&mut reader, &mut std::io::Cursor::new(writer)).await
                     })
-                    .map_err(|e| format!("{}", e))
+                })
+                .map_err(|e| format!("{}", e))
             }
         }
     }
@@ -691,6 +692,7 @@ mod tests {
     #[cfg(feature = "backend-dragonfly-proxy")]
     #[test]
     fn test_proxy_sdk_response_reader_with_data() {
+        let _runtime = proxy::scoped_test_runtime();
         let data = b"blob content here";
         let resp = Response::ProxySDK(make_get_response(Some(StatusCode::OK), None, Some(data)));
         let mut reader = resp.reader();
@@ -702,6 +704,7 @@ mod tests {
     #[cfg(feature = "backend-dragonfly-proxy")]
     #[test]
     fn test_proxy_sdk_response_reader_none() {
+        let _runtime = proxy::scoped_test_runtime();
         let resp = Response::ProxySDK(make_get_response(Some(StatusCode::OK), None, None));
         let mut reader = resp.reader();
         let mut buf = Vec::new();
@@ -712,6 +715,7 @@ mod tests {
     #[cfg(feature = "backend-dragonfly-proxy")]
     #[test]
     fn test_proxy_sdk_response_text() {
+        let _runtime = proxy::scoped_test_runtime();
         let data = b"hello world";
         let resp = Response::ProxySDK(make_get_response(Some(StatusCode::OK), None, Some(data)));
         let text = resp.text().unwrap();
@@ -721,6 +725,7 @@ mod tests {
     #[cfg(feature = "backend-dragonfly-proxy")]
     #[test]
     fn test_proxy_sdk_response_copy_to() {
+        let _runtime = proxy::scoped_test_runtime();
         let data = b"copy this";
         let resp = Response::ProxySDK(make_get_response(Some(StatusCode::OK), None, Some(data)));
         let mut buf = vec![0u8; 64];

@@ -51,18 +51,66 @@ pub enum ProxyError {
 lazy_static! {
     static ref PROXY_SDK_CLIENT: Arc<RwLock<HashMap<String, Arc<ProxySDKClient>>>> =
         Arc::new(RwLock::new(HashMap::new()));
-    static ref PROXY_RUNTIME: Result<Runtime, String> = tokio::runtime::Builder::new_multi_thread()
+    static ref PROXY_RUNTIME: Result<Runtime, String> = build_runtime();
+}
+
+fn build_runtime() -> Result<Runtime, String> {
+    tokio::runtime::Builder::new_multi_thread()
         .thread_name("nydus-backend-proxy-runtime")
         .worker_threads(10)
         .enable_all()
         .build()
-        .map_err(|e| format!("failed to create proxy tokio runtime: {}", e));
+        .map_err(|e| format!("failed to create proxy tokio runtime: {}", e))
 }
 
 pub(crate) fn runtime() -> &'static Runtime {
     PROXY_RUNTIME
         .as_ref()
         .expect("proxy tokio runtime failed to initialize")
+}
+
+pub(crate) fn with_runtime<T>(operation: impl FnOnce(&Runtime) -> T) -> T {
+    #[cfg(test)]
+    {
+        TEST_RUNTIME.with(|slot| {
+            let scoped = slot.borrow();
+            operation(scoped.as_ref().unwrap_or_else(|| runtime()))
+        })
+    }
+    #[cfg(not(test))]
+    operation(runtime())
+}
+
+#[cfg(test)]
+thread_local! {
+    static TEST_RUNTIME: std::cell::RefCell<Option<Runtime>> = const {
+        std::cell::RefCell::new(None)
+    };
+}
+
+#[cfg(test)]
+pub(crate) struct TestRuntimeGuard {
+    previous: Option<Runtime>,
+    _not_send: std::marker::PhantomData<std::rc::Rc<()>>,
+}
+
+#[cfg(test)]
+pub(crate) fn scoped_test_runtime() -> TestRuntimeGuard {
+    let scoped = build_runtime().expect("failed to create scoped proxy runtime");
+    let previous = TEST_RUNTIME.with(|slot| slot.replace(Some(scoped)));
+    TestRuntimeGuard {
+        previous,
+        _not_send: std::marker::PhantomData,
+    }
+}
+
+#[cfg(test)]
+impl Drop for TestRuntimeGuard {
+    fn drop(&mut self) {
+        let scoped = TEST_RUNTIME.with(|slot| slot.replace(self.previous.take()));
+        // Drop outside the RefCell borrow and wait for the runtime's workers to exit.
+        drop(scoped);
+    }
 }
 
 pub(crate) struct SyncAdapter<R> {
@@ -77,7 +125,9 @@ impl<R> SyncAdapter<R> {
 
 impl<R: AsyncRead + Unpin> Read for SyncAdapter<R> {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        runtime().block_on(async { tokio::io::AsyncReadExt::read(&mut self.inner, buf).await })
+        with_runtime(|runtime| {
+            runtime.block_on(async { tokio::io::AsyncReadExt::read(&mut self.inner, buf).await })
+        })
     }
 }
 
@@ -113,7 +163,8 @@ impl ProxySDKClient {
             client_cert: None,
             ..GetRequest::default()
         };
-        let resp = runtime().block_on(async { self.client.get(&request).await });
+        let resp =
+            with_runtime(|runtime| runtime.block_on(async { self.client.get(&request).await }));
         match resp {
             Ok(resp) => Ok(resp),
             Err(e) => match e {
@@ -182,15 +233,16 @@ impl ProxySDKClients {
         info!("[PERF] creating new proxy sdk client for {}", endpoint);
 
         let client = Arc::new(ProxySDKClient {
-            client: runtime()
-                .block_on(async {
+            client: with_runtime(|runtime| {
+                runtime.block_on(async {
                     Proxy::builder()
                         .scheduler_endpoint(endpoint.to_string())
                         .max_retries(0)
                         .build()
                         .await
                 })
-                .map_err(|e| format!("{}", e))?,
+            })
+            .map_err(|e| format!("{}", e))?,
         });
         guard.insert(endpoint.to_string(), client.clone());
 
@@ -210,6 +262,7 @@ mod tests {
 
     #[test]
     fn test_sync_adapter_reads_data() {
+        let _runtime = scoped_test_runtime();
         let data = b"hello dragonfly proxy";
         let cursor = tokio::io::BufReader::new(std::io::Cursor::new(data.to_vec()));
         let mut adapter = SyncAdapter::new(cursor);
@@ -220,6 +273,7 @@ mod tests {
 
     #[test]
     fn test_sync_adapter_empty() {
+        let _runtime = scoped_test_runtime();
         let mut adapter = SyncAdapter::new(tokio::io::empty());
         let mut buf = vec![0u8; 16];
         let n = adapter.read(&mut buf).unwrap();
@@ -228,6 +282,7 @@ mod tests {
 
     #[test]
     fn test_sync_adapter_partial_reads() {
+        let _runtime = scoped_test_runtime();
         let data = b"abcdefghij";
         let cursor = tokio::io::BufReader::new(std::io::Cursor::new(data.to_vec()));
         let mut adapter = SyncAdapter::new(cursor);
@@ -246,32 +301,37 @@ mod tests {
 
     #[test]
     fn test_proxy_runtime_initializes() {
-        // Verify PROXY_RUNTIME initializes successfully
-        let rt = runtime();
-        // Verify it can execute async work
-        let result = rt.block_on(async { 42 });
+        let _runtime = scoped_test_runtime();
+        // Exercise the same runtime factory and parameters as PROXY_RUNTIME.
+        let result = with_runtime(|runtime| runtime.block_on(async { 42 }));
         assert_eq!(result, 42);
     }
 
     #[test]
     fn test_proxy_runtime_is_multi_thread() {
+        let _runtime = scoped_test_runtime();
         // Verify the runtime supports spawning onto multiple threads
-        let rt = runtime();
-        let result = rt.block_on(async {
-            let handles: Vec<_> = (0..10)
-                .map(|i| tokio::spawn(async move { i * 2 }))
-                .collect();
-            let mut results = Vec::new();
-            for h in handles {
-                results.push(h.await.unwrap());
-            }
-            results
+        let result = with_runtime(|runtime| {
+            runtime.block_on(async {
+                let handles: Vec<_> = (0..10)
+                    .map(|i| tokio::spawn(async move { i * 2 }))
+                    .collect();
+                let mut results = Vec::new();
+                for h in handles {
+                    results.push(h.await.unwrap());
+                }
+                results
+            })
         });
         let expected: Vec<i32> = (0..10).map(|i| i * 2).collect();
         assert_eq!(result, expected);
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "the process-wide proxy runtime intentionally retains its worker threads"
+    )]
     fn test_proxy_runtime_is_static_singleton() {
         // Multiple calls to runtime() return the same runtime
         let rt1 = runtime() as *const Runtime;
@@ -280,7 +340,17 @@ mod tests {
     }
 
     #[test]
+    fn test_scoped_proxy_runtime_is_reused() {
+        let _runtime = scoped_test_runtime();
+        let first = with_runtime(|runtime| runtime as *const Runtime);
+        let second = with_runtime(|runtime| runtime as *const Runtime);
+        assert_eq!(first, second);
+        assert_eq!(with_runtime(|runtime| runtime.metrics().num_workers()), 10);
+    }
+
+    #[test]
     fn test_sync_adapter_uses_proxy_runtime() {
+        let _runtime = scoped_test_runtime();
         // SyncAdapter uses the proxy runtime for async reads
         let data = b"runtime test data";
         let cursor = tokio::io::BufReader::new(std::io::Cursor::new(data.to_vec()));
@@ -355,19 +425,32 @@ mod tests {
         assert_eq!(HEADER_VALUE_DRAGONFLY_ERROR_TYPE_PROXY, "proxy");
     }
 
-    fn start_scheduler_blackhole() -> (String, Arc<AtomicBool>) {
+    struct SchedulerBlackhole {
+        endpoint: String,
+        shutdown: Arc<AtomicBool>,
+        worker: Option<thread::JoinHandle<()>>,
+    }
+
+    impl Drop for SchedulerBlackhole {
+        fn drop(&mut self) {
+            self.shutdown.store(true, Ordering::Release);
+            self.worker.take().unwrap().join().unwrap();
+        }
+    }
+
+    fn start_scheduler_blackhole() -> SchedulerBlackhole {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
         let shutdown = Arc::new(AtomicBool::new(false));
         let shutdown_clone = shutdown.clone();
 
-        thread::spawn(move || {
+        let worker = thread::spawn(move || {
             listener.set_nonblocking(true).unwrap();
-            while !shutdown_clone.load(Ordering::Relaxed) {
+            while !shutdown_clone.load(Ordering::Acquire) {
                 match listener.accept() {
                     Ok((mut stream, _)) => {
-                        let mut buf = [0u8; 1024];
-                        let _ = stream.read(&mut buf);
+                        // Reply without a blocking read so fixture cleanup can always join.
+                        stream.set_nonblocking(true).unwrap();
                         let _ = stream.write_all(b"not grpc");
                         let _ = stream.flush();
                     }
@@ -379,15 +462,18 @@ mod tests {
             }
         });
 
-        (format!("http://{}", addr), shutdown)
+        SchedulerBlackhole {
+            endpoint: format!("http://{}", addr),
+            shutdown,
+            worker: Some(worker),
+        }
     }
 
     #[test]
     fn test_proxy_sdk_clients_surface_scheduler_connection_errors() {
-        let (endpoint, shutdown) = start_scheduler_blackhole();
-        let result = ProxySDKClients::get(&endpoint);
-
-        shutdown.store(true, Ordering::Relaxed);
+        let _runtime = scoped_test_runtime();
+        let scheduler = start_scheduler_blackhole();
+        let result = ProxySDKClients::get(&scheduler.endpoint);
         assert!(matches!(
             result,
             Err(msg)
@@ -398,6 +484,7 @@ mod tests {
 
     #[test]
     fn test_proxy_sdk_clients_reject_invalid_endpoint() {
+        let _runtime = scoped_test_runtime();
         let result = ProxySDKClients::get("not-a-valid-endpoint");
 
         assert!(matches!(
