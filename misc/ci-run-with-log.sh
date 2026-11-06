@@ -33,7 +33,7 @@ except OSError:
 
 excerpt = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", excerpt)[-2400:]
 excerpt = excerpt.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
-print(f"::error title=Smoke command failed::Exit status {sys.argv[2]}; log excerpt:%0A{excerpt}")
+print(f"::error title=CI command failed::Exit status {sys.argv[2]}; log excerpt:%0A{excerpt}")
 PY
 fi
 
