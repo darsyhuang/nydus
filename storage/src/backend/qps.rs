@@ -59,8 +59,12 @@ impl QpsLimiter {
     ///
     /// Returns true if a token was acquired, false otherwise.
     pub fn try_acquire(&self) -> bool {
+        self.try_acquire_with_clock(Instant::now)
+    }
+
+    fn try_acquire_with_clock(&self, clock: impl FnOnce() -> Instant) -> bool {
         let mut inner = self.inner.lock().unwrap();
-        inner.refill();
+        inner.refill_at(clock());
 
         if inner.tokens >= 1.0 {
             inner.tokens -= 1.0;
@@ -77,14 +81,18 @@ impl QpsLimiter {
     ///
     /// Returns true if the request was rate-limited (had to wait), false if acquired immediately.
     pub fn acquire(&self) -> bool {
-        if self.try_acquire() {
+        self.acquire_with_clock(Instant::now)
+    }
+
+    fn acquire_with_clock(&self, mut clock: impl FnMut() -> Instant) -> bool {
+        if self.try_acquire_with_clock(&mut clock) {
             return false;
         }
 
         let mut inner = self.inner.lock().unwrap();
 
         loop {
-            inner.refill();
+            inner.refill_at(clock());
 
             if inner.tokens >= 1.0 {
                 inner.tokens -= 1.0;
@@ -103,10 +111,14 @@ impl QpsLimiter {
     ///
     /// Returns true if all tokens were acquired, false otherwise.
     pub fn try_acquire_tokens(&self, count: f64) -> bool {
+        self.try_acquire_tokens_with_clock(count, Instant::now)
+    }
+
+    fn try_acquire_tokens_with_clock(&self, count: f64, clock: impl FnOnce() -> Instant) -> bool {
         assert!(count > 0.0, "Token count must be greater than 0");
 
         let mut inner = self.inner.lock().unwrap();
-        inner.refill();
+        inner.refill_at(clock());
 
         if inner.tokens >= count {
             inner.tokens -= count;
@@ -122,16 +134,20 @@ impl QpsLimiter {
     ///
     /// Returns true if the request was rate-limited (had to wait), false if acquired immediately.
     pub fn acquire_tokens(&self, count: f64) -> bool {
+        self.acquire_tokens_with_clock(count, Instant::now)
+    }
+
+    fn acquire_tokens_with_clock(&self, count: f64, mut clock: impl FnMut() -> Instant) -> bool {
         assert!(count > 0.0, "Token count must be greater than 0");
 
-        if self.try_acquire_tokens(count) {
+        if self.try_acquire_tokens_with_clock(count, &mut clock) {
             return false;
         }
 
         let mut inner = self.inner.lock().unwrap();
 
         loop {
-            inner.refill();
+            inner.refill_at(clock());
 
             if inner.tokens >= count {
                 inner.tokens -= count;
@@ -162,7 +178,10 @@ impl QpsLimiter {
 
 impl QpsLimiterInner {
     fn refill(&mut self) {
-        let now = Instant::now();
+        self.refill_at(Instant::now());
+    }
+
+    fn refill_at(&mut self, now: Instant) {
         let elapsed = now.duration_since(self.last_refill_time).as_secs_f64();
 
         // Calculate new tokens based on elapsed time
@@ -177,6 +196,18 @@ impl QpsLimiterInner {
 mod tests {
     use super::*;
     use std::time::Instant;
+
+    fn running_clock_from(now: Instant) -> impl FnMut() -> Instant {
+        let mut origin: Option<Instant> = None;
+        move || match origin {
+            Some(origin) => now + origin.elapsed(),
+            None => {
+                // Start real elapsed time inside the first acquisition's lock.
+                origin = Some(Instant::now());
+                now
+            }
+        }
+    }
 
     #[test]
     fn test_qps_limiter_creation() {
@@ -217,31 +248,38 @@ mod tests {
     #[test]
     fn test_token_refill() {
         let limiter = QpsLimiter::new(100.0);
+        let now = limiter.inner.lock().unwrap().last_refill_time;
 
-        // Exhaust tokens
+        // Exhaust the initial bucket without allowing elapsed wall time to refill it.
         let mut acquired = 0;
-        while limiter.try_acquire() {
+        while limiter.try_acquire_with_clock(|| now) {
             acquired += 1;
         }
         assert_eq!(acquired, 100);
 
-        // After some time, tokens should be refilled
-        std::thread::sleep(Duration::from_millis(100));
+        let mut inner = limiter.inner.lock().unwrap();
+        assert_eq!(inner.tokens, 0.0);
+        let refill_time = now + Duration::from_millis(100);
+        inner.refill_at(refill_time);
+        assert_eq!(inner.tokens, 10.0);
 
-        let tokens = limiter.current_tokens();
-        // Should have approximately 10 tokens (100 QPS * 0.1 seconds)
-        assert!((8.0..=12.0).contains(&tokens));
+        // The same instant must not refill twice, and later refills cannot exceed capacity.
+        inner.refill_at(refill_time);
+        assert_eq!(inner.tokens, 10.0);
+        inner.refill_at(now + Duration::from_secs(2));
+        assert_eq!(inner.tokens, 100.0);
     }
 
     #[test]
     fn test_blocking_acquire() {
         let limiter = QpsLimiter::new(100.0);
+        let now = limiter.inner.lock().unwrap().last_refill_time;
 
         // Exhaust all tokens
-        while limiter.try_acquire() {}
+        while limiter.try_acquire_with_clock(|| now) {}
 
         let start = Instant::now();
-        let was_limited = limiter.acquire(); // Should block and wait for refill
+        let was_limited = limiter.acquire_with_clock(running_clock_from(now));
         let elapsed = start.elapsed();
 
         // Should have been rate-limited
@@ -301,25 +339,30 @@ mod tests {
 
     #[test]
     fn test_concurrent_acquisition() {
-        use std::sync::Arc;
+        use std::sync::{Arc, Barrier};
         use std::thread;
 
         let limiter = Arc::new(QpsLimiter::new(100.0));
+        let now = limiter.inner.lock().unwrap().last_refill_time;
+        let barrier = Arc::new(Barrier::new(11));
 
-        // Create multiple threads trying to acquire tokens
+        // Compete for one fixed bucket without admitting new tokens while threads run.
         let mut handles = vec![];
 
         for _ in 0..10 {
             let limiter = Arc::clone(&limiter);
+            let barrier = Arc::clone(&barrier);
             let handle = thread::spawn(move || {
+                barrier.wait();
                 let mut count = 0;
-                while limiter.try_acquire() {
+                while limiter.try_acquire_with_clock(|| now) {
                     count += 1;
                 }
                 count
             });
             handles.push(handle);
         }
+        barrier.wait();
 
         let mut total_acquired = 0;
         for handle in handles {
@@ -330,7 +373,8 @@ mod tests {
         assert_eq!(total_acquired, 100);
 
         // Should have no tokens left
-        assert!(!limiter.try_acquire());
+        assert!(!limiter.try_acquire_with_clock(|| now));
+        assert_eq!(limiter.inner.lock().unwrap().tokens, 0.0);
     }
 
     #[test]
@@ -342,11 +386,14 @@ mod tests {
         assert!(!was_limited);
 
         // Exhaust all tokens
-        while limiter.try_acquire() {}
+        let now = limiter.inner.lock().unwrap().last_refill_time;
+        while limiter.try_acquire_with_clock(|| now) {}
 
         // Next acquisition should be rate-limited
-        let was_limited = limiter.acquire();
+        let start = Instant::now();
+        let was_limited = limiter.acquire_with_clock(running_clock_from(now));
         assert!(was_limited);
+        assert!(start.elapsed() >= Duration::from_millis(50));
     }
 
     #[test]
@@ -358,7 +405,10 @@ mod tests {
         assert!(!was_limited);
 
         // Try to acquire more than available
-        let was_limited = limiter.acquire_tokens(10.0);
+        let now = limiter.inner.lock().unwrap().last_refill_time;
+        let start = Instant::now();
+        let was_limited = limiter.acquire_tokens_with_clock(10.0, running_clock_from(now));
         assert!(was_limited);
+        assert!(start.elapsed() >= Duration::from_millis(400));
     }
 }
